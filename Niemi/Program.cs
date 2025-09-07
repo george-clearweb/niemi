@@ -4,6 +4,8 @@ using Microsoft.OpenApi.Models;
 using FirebirdSql.Data.FirebirdClient;
 using Niemi.Models;
 using Niemi.Services;
+using Microsoft.EntityFrameworkCore;
+using Niemi.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +25,10 @@ app.Run();
 // Configuration methods
 void ConfigureServices(WebApplicationBuilder builder)
 {
+    // Add Entity Framework
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("AZURE_SQL_CONNECTION_STRING")));
+
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(c =>
     {
