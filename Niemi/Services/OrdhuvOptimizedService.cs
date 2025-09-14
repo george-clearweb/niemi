@@ -5,17 +5,232 @@ using Niemi.Models.DTOs;
 
 namespace Niemi.Services;
 
-public class OrdhuvOptimizedService : IOrdhuvOptimizedService
-{
-    private readonly string _connectionString;
-    private readonly ILogger<OrdhuvOptimizedService> _logger;
-
-    public OrdhuvOptimizedService(IConfiguration configuration, ILogger<OrdhuvOptimizedService> logger)
+    public class OrdhuvOptimizedService : IOrdhuvOptimizedService
     {
-        _connectionString = configuration.GetConnectionString("FirebirdConnection") 
-            ?? throw new ArgumentNullException("FirebirdConnection string is missing");
-        _logger = logger;
-    }
+        private readonly string _connectionString;
+        private readonly ILogger<OrdhuvOptimizedService> _logger;
+
+        public OrdhuvOptimizedService(IConfiguration configuration, ILogger<OrdhuvOptimizedService> logger)
+        {
+            _connectionString = configuration.GetConnectionString("FirebirdConnection") 
+                ?? throw new ArgumentNullException("FirebirdConnection string is missing");
+            _logger = logger;
+        }
+
+        /// <summary>
+        /// Splits customer name into first name and last name
+        /// Requires: comma followed by exactly one space, and first name must be a single word
+        /// Examples: "Andersson, Erik" -> lastName: "Andersson", firstName: "Erik"
+        ///           "JOHANSSON, ANNA" -> lastName: "Johansson", firstName: "Anna"
+        ///           "Andersson,  Erik" -> lastName: null, firstName: null (multiple spaces - invalid)
+        ///           "ABU, MAXWELL KWAME" -> lastName: null, firstName: null (first name has spaces - invalid)
+        ///           "Erik Andersson" -> lastName: null, firstName: null (no comma)
+        /// </summary>
+        private static (string? lastName, string? firstName) SplitCustomerName(string? customerName)
+        {
+            if (string.IsNullOrWhiteSpace(customerName))
+                return (null, null);
+
+            var normalized = customerName.Trim();
+            
+            // Look for pattern: "LastName, FirstName" (comma followed by exactly one space)
+            var commaIndex = normalized.IndexOf(',');
+            if (commaIndex == -1)
+            {
+                // No comma found
+                return (null, null);
+            }
+
+            // Check if there's exactly one space after the comma
+            if (commaIndex + 2 >= normalized.Length || normalized[commaIndex + 1] != ' ')
+            {
+                // No space or more than one space after comma
+                return (null, null);
+            }
+
+            // Check if there's a second space (which would make it invalid)
+            if (commaIndex + 3 < normalized.Length && normalized[commaIndex + 2] == ' ')
+            {
+                // More than one space after comma
+                return (null, null);
+            }
+
+            // Extract last name (before comma) and first name (after comma and single space)
+            var lastName = normalized.Substring(0, commaIndex).Trim();
+            var firstName = normalized.Substring(commaIndex + 2).Trim(); // Skip comma and single space
+
+            // Check that first name doesn't contain any spaces (should be single word)
+            if (firstName.Contains(' '))
+            {
+                // First name contains spaces, which is invalid
+                return (null, null);
+            }
+
+            // Apply proper capitalization (Title Case)
+            lastName = ToTitleCase(lastName);
+            firstName = ToTitleCase(firstName);
+
+            return (string.IsNullOrEmpty(lastName) ? null : lastName,
+                    string.IsNullOrEmpty(firstName) ? null : firstName);
+        }
+
+        /// <summary>
+        /// Converts string to Title Case (first letter uppercase, rest lowercase)
+        /// </summary>
+        private static string ToTitleCase(string? input)
+        {
+            if (string.IsNullOrWhiteSpace(input) || input.Length == 0)
+                return string.Empty;
+
+            return char.ToUpper(input[0]) + input.Substring(1).ToLower();
+        }
+
+        /// <summary>
+        /// Finds the first mobile phone number from the provided phone numbers and formats it as +467##
+        /// Logic: Clean spaces and "-", strip leading 0/+/46, if starts with 7 then add +46
+        /// Examples: 
+        /// - "+46706670431" -> "+46706670431" (already correct)
+        /// - "0707799545" -> "+46707799545"
+        /// - "4670 559 68 47" -> "+46705596847"
+        /// - "070-383 35 67" -> "+46703833567"
+        /// - "070 668 73 87" -> "+46706687387"
+        /// - "0920-230088" -> null (not mobile - doesn't start with 7)
+        /// - "461121-9231" -> null (not mobile - doesn't start with 7)
+        /// </summary>
+        private static string? FindAndFormatMobilePhone(string? tel1, string? tel2, string? tel3)
+        {
+            var phoneNumbers = new[] { tel1, tel2, tel3 };
+            
+            foreach (var phone in phoneNumbers)
+            {
+                if (string.IsNullOrWhiteSpace(phone))
+                    continue;
+                    
+                var formatted = FormatMobilePhone(phone);
+                if (formatted != null)
+                    return formatted;
+            }
+            
+            return null;
+        }
+
+        /// <summary>
+        /// Formats a phone number if it's a Swedish mobile number, otherwise returns null
+        /// </summary>
+        private static string? FormatMobilePhone(string? phoneNumber)
+        {
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+                return null;
+
+            // Step 1: Clean spaces and "-"
+            var cleaned = phoneNumber.Replace(" ", "").Replace("-", "");
+            
+            // Step 2: Strip leading 0, +, 46
+            while (cleaned.StartsWith("0") || cleaned.StartsWith("+") || cleaned.StartsWith("46"))
+            {
+                if (cleaned.StartsWith("0"))
+                    cleaned = cleaned.Substring(1);
+                else if (cleaned.StartsWith("+"))
+                    cleaned = cleaned.Substring(1);
+                else if (cleaned.StartsWith("46"))
+                    cleaned = cleaned.Substring(2);
+            }
+            
+            // Step 3: If it starts with 7, it's a mobile
+            if (cleaned.StartsWith("7"))
+            {
+                // Step 4: Add +46
+                return "+46" + cleaned;
+            }
+            
+            // Not a mobile number
+            return null;
+        }
+
+        /// <summary>
+        /// Splits postal address into zip code and city
+        /// Examples: "97346  LULEÅ" -> zip: "97346", city: "LULEÅ"
+        ///           "945 33 ROSVIK" -> zip: "94533", city: "ROSVIK"
+        /// </summary>
+        private static (string? zipCode, string? city) SplitPostalAddress(string? postalAddress)
+        {
+            if (string.IsNullOrWhiteSpace(postalAddress))
+                return (null, null);
+
+            // Remove extra whitespace and normalize
+            var normalized = postalAddress.Trim();
+            
+            // Find the first sequence of letters (city starts here)
+            var cityStartIndex = -1;
+            for (int i = 0; i < normalized.Length; i++)
+            {
+                if (char.IsLetter(normalized[i]))
+                {
+                    cityStartIndex = i;
+                    break;
+                }
+            }
+
+            if (cityStartIndex == -1)
+            {
+                // No letters found, might be just numbers - strip all spaces for consistency
+                var zipCodeOnly = normalized.Replace(" ", "");
+                return (string.IsNullOrEmpty(zipCodeOnly) ? null : zipCodeOnly, null);
+            }
+
+            // Extract zip code (everything before the first letter) and strip all spaces
+            var zipCode = normalized.Substring(0, cityStartIndex).Replace(" ", "");
+            
+            // Extract city (everything from the first letter onwards)
+            var city = normalized.Substring(cityStartIndex).Trim();
+
+            // Return null for empty strings
+            return (string.IsNullOrEmpty(zipCode) ? null : zipCode,
+                    string.IsNullOrEmpty(city) ? null : city);
+        }
+
+        /// <summary>
+        /// Creates a KunregDto from the data reader with postal address, name splitting, and mobile phone detection
+        /// </summary>
+        private static KunregDto CreateKunregDto(System.Data.Common.DbDataReader reader, int kunKunrIndex, int kunPadrIndex)
+        {
+            var kunNamn = reader.IsDBNull(kunKunrIndex + 1) ? null : reader.GetString(kunKunrIndex + 1);
+            var kunAdr1 = reader.IsDBNull(kunKunrIndex + 2) ? null : reader.GetString(kunKunrIndex + 2);
+            var kunAdr2 = reader.IsDBNull(kunKunrIndex + 3) ? null : reader.GetString(kunKunrIndex + 3);
+            var kunPadr = reader.IsDBNull(kunPadrIndex) ? null : reader.GetString(kunPadrIndex);
+            var kunOrgn = reader.IsDBNull(kunKunrIndex + 5) ? null : reader.GetString(kunKunrIndex + 5);
+            var kunTel1 = reader.IsDBNull(kunKunrIndex + 6) ? null : reader.GetString(kunKunrIndex + 6);
+            var kunTel2 = reader.IsDBNull(kunKunrIndex + 7) ? null : reader.GetString(kunKunrIndex + 7);
+            var kunTel3 = reader.IsDBNull(kunKunrIndex + 8) ? null : reader.GetString(kunKunrIndex + 8);
+            var kunEpostadress = reader.IsDBNull(kunKunrIndex + 9) ? null : reader.GetString(kunKunrIndex + 9);
+            
+            var (lastName, firstName) = SplitCustomerName(kunNamn);
+            var (zipCode, city) = SplitPostalAddress(kunPadr);
+            var mobilePhone = FindAndFormatMobilePhone(kunTel1, kunTel2, kunTel3);
+            
+            return new KunregDto
+            {
+                // Original database fields
+                KunKunr = reader.IsDBNull(kunKunrIndex) ? 0 : 
+                         (int.TryParse(reader.GetString(kunKunrIndex), out var kunKunrValue) ? kunKunrValue : 0),
+                KunNamn = kunNamn,
+                KunAdr1 = kunAdr1,
+                KunAdr2 = kunAdr2,
+                KunPadr = kunPadr,
+                KunOrgn = kunOrgn,
+                KunTel1 = kunTel1,
+                KunTel2 = kunTel2,
+                KunTel3 = kunTel3,
+                KunEpostadress = kunEpostadress,
+                
+                // Calculated/parsed fields
+                FirstName = firstName,
+                LastName = lastName,
+                ZipCode = zipCode,
+                City = city,
+                MobilePhone = mobilePhone
+            };
+        }
 
     public async Task<IEnumerable<OrdhuvDto>> GetOrdersWithInvoicesByDateAsync(DateTime fromDate, DateTime toDate)
     {
@@ -44,42 +259,39 @@ public class OrdhuvOptimizedService : IOrdhuvOptimizedService
                     o.ORH_UPDATED_AT,
                     CASE WHEN o.ORH_BETKUNR > 0 THEN o.ORH_BETKUNR ELSE NULL END as ORH_BETKUNR,
                     CASE WHEN o.ORH_DRIVER_NO > 0 THEN o.ORH_DRIVER_NO ELSE NULL END as ORH_DRIVER_NO,
-                    -- Customer data (ORH_KUNR) - only meaningful fields
+                    -- Customer data (ORH_KUNR)
                     c.KUN_KUNR as CUST_KUN_KUNR,
                     c.KUN_NAMN as CUST_KUN_NAMN,
-                    CASE WHEN c.KUN_ADR2 IS NOT NULL AND c.KUN_ADR2 != '' THEN c.KUN_ADR2 ELSE NULL END as CUST_KUN_ADR2,
-                    CASE WHEN c.KUN_ORGN IS NOT NULL AND c.KUN_ORGN != '' THEN c.KUN_ORGN ELSE NULL END as CUST_KUN_ORGN,
-                    CASE WHEN c.KUN_TEL1 IS NOT NULL AND c.KUN_TEL1 != '' THEN c.KUN_TEL1 ELSE NULL END as CUST_KUN_TEL1,
-                    CASE WHEN c.KUN_TEL2 IS NOT NULL AND c.KUN_TEL2 != '' THEN c.KUN_TEL2 ELSE NULL END as CUST_KUN_TEL2,
-                    CASE WHEN c.KUN_EPOSTADRESS IS NOT NULL AND c.KUN_EPOSTADRESS != '' THEN c.KUN_EPOSTADRESS ELSE NULL END as CUST_KUN_EPOSTADRESS,
-                    CASE WHEN c.KUN_MOMSNR IS NOT NULL AND c.KUN_MOMSNR != '' THEN c.KUN_MOMSNR ELSE NULL END as CUST_KUN_MOMSNR,
-                    CASE WHEN c.KUN_KRTI > 0 THEN c.KUN_KRTI ELSE NULL END as CUST_KUN_KRTI,
-                    CASE WHEN c.KUN_FLEETPAYER > 0 THEN c.KUN_FLEETPAYER ELSE NULL END as CUST_KUN_FLEETPAYER,
-                    CASE WHEN c.REMINDER_DISABLE > 0 THEN c.REMINDER_DISABLE ELSE NULL END as CUST_REMINDER_DISABLE,
-                    -- Payer data (ORH_BETKUNR) - only meaningful fields
+                    c.KUN_ADR1 as CUST_KUN_ADR1,
+                    c.KUN_ADR2 as CUST_KUN_ADR2,
+                    c.KUN_PADR as CUST_KUN_PADR,
+                    c.KUN_ORGN as CUST_KUN_ORGN,
+                    c.KUN_TEL1 as CUST_KUN_TEL1,
+                    c.KUN_TEL2 as CUST_KUN_TEL2,
+                    c.KUN_TEL3 as CUST_KUN_TEL3,
+                    c.KUN_EPOSTADRESS as CUST_KUN_EPOSTADRESS,
+                    -- Payer data (ORH_BETKUNR)
                     p.KUN_KUNR as PAYER_KUN_KUNR,
                     p.KUN_NAMN as PAYER_KUN_NAMN,
-                    CASE WHEN p.KUN_ADR2 IS NOT NULL AND p.KUN_ADR2 != '' THEN p.KUN_ADR2 ELSE NULL END as PAYER_KUN_ADR2,
-                    CASE WHEN p.KUN_ORGN IS NOT NULL AND p.KUN_ORGN != '' THEN p.KUN_ORGN ELSE NULL END as PAYER_KUN_ORGN,
-                    CASE WHEN p.KUN_TEL1 IS NOT NULL AND p.KUN_TEL1 != '' THEN p.KUN_TEL1 ELSE NULL END as PAYER_KUN_TEL1,
-                    CASE WHEN p.KUN_TEL2 IS NOT NULL AND p.KUN_TEL2 != '' THEN p.KUN_TEL2 ELSE NULL END as PAYER_KUN_TEL2,
-                    CASE WHEN p.KUN_EPOSTADRESS IS NOT NULL AND p.KUN_EPOSTADRESS != '' THEN p.KUN_EPOSTADRESS ELSE NULL END as PAYER_KUN_EPOSTADRESS,
-                    CASE WHEN p.KUN_MOMSNR IS NOT NULL AND p.KUN_MOMSNR != '' THEN p.KUN_MOMSNR ELSE NULL END as PAYER_KUN_MOMSNR,
-                    CASE WHEN p.KUN_KRTI > 0 THEN p.KUN_KRTI ELSE NULL END as PAYER_KUN_KRTI,
-                    CASE WHEN p.KUN_FLEETPAYER > 0 THEN p.KUN_FLEETPAYER ELSE NULL END as PAYER_KUN_FLEETPAYER,
-                    CASE WHEN p.REMINDER_DISABLE > 0 THEN p.REMINDER_DISABLE ELSE NULL END as PAYER_REMINDER_DISABLE,
-                    -- Driver data (ORH_DRIVER_NO) - only meaningful fields
+                    p.KUN_ADR1 as PAYER_KUN_ADR1,
+                    p.KUN_ADR2 as PAYER_KUN_ADR2,
+                    p.KUN_PADR as PAYER_KUN_PADR,
+                    p.KUN_ORGN as PAYER_KUN_ORGN,
+                    p.KUN_TEL1 as PAYER_KUN_TEL1,
+                    p.KUN_TEL2 as PAYER_KUN_TEL2,
+                    p.KUN_TEL3 as PAYER_KUN_TEL3,
+                    p.KUN_EPOSTADRESS as PAYER_KUN_EPOSTADRESS,
+                    -- Driver data (ORH_DRIVER_NO)
                     d.KUN_KUNR as DRIVER_KUN_KUNR,
                     d.KUN_NAMN as DRIVER_KUN_NAMN,
-                    CASE WHEN d.KUN_ADR2 IS NOT NULL AND d.KUN_ADR2 != '' THEN d.KUN_ADR2 ELSE NULL END as DRIVER_KUN_ADR2,
-                    CASE WHEN d.KUN_ORGN IS NOT NULL AND d.KUN_ORGN != '' THEN d.KUN_ORGN ELSE NULL END as DRIVER_KUN_ORGN,
-                    CASE WHEN d.KUN_TEL1 IS NOT NULL AND d.KUN_TEL1 != '' THEN d.KUN_TEL1 ELSE NULL END as DRIVER_KUN_TEL1,
-                    CASE WHEN d.KUN_TEL2 IS NOT NULL AND d.KUN_TEL2 != '' THEN d.KUN_TEL2 ELSE NULL END as DRIVER_KUN_TEL2,
-                    CASE WHEN d.KUN_EPOSTADRESS IS NOT NULL AND d.KUN_EPOSTADRESS != '' THEN d.KUN_EPOSTADRESS ELSE NULL END as DRIVER_KUN_EPOSTADRESS,
-                    CASE WHEN d.KUN_MOMSNR IS NOT NULL AND d.KUN_MOMSNR != '' THEN d.KUN_MOMSNR ELSE NULL END as DRIVER_KUN_MOMSNR,
-                    CASE WHEN d.KUN_KRTI > 0 THEN d.KUN_KRTI ELSE NULL END as DRIVER_KUN_KRTI,
-                    CASE WHEN d.KUN_FLEETPAYER > 0 THEN d.KUN_FLEETPAYER ELSE NULL END as DRIVER_KUN_FLEETPAYER,
-                    CASE WHEN d.REMINDER_DISABLE > 0 THEN d.REMINDER_DISABLE ELSE NULL END as DRIVER_REMINDER_DISABLE
+                    d.KUN_ADR1 as DRIVER_KUN_ADR1,
+                    d.KUN_ADR2 as DRIVER_KUN_ADR2,
+                    d.KUN_PADR as DRIVER_KUN_PADR,
+                    d.KUN_ORGN as DRIVER_KUN_ORGN,
+                    d.KUN_TEL1 as DRIVER_KUN_TEL1,
+                    d.KUN_TEL2 as DRIVER_KUN_TEL2,
+                    d.KUN_TEL3 as DRIVER_KUN_TEL3,
+                    d.KUN_EPOSTADRESS as DRIVER_KUN_EPOSTADRESS
                 FROM ORDHUV o
                 INNER JOIN INVOICEINDIVIDUAL i ON o.ORH_DOKN = i.INVOICE_NO
                 INNER JOIN FORTNOX_LOG f ON CAST(i.INVOICE_NO AS VARCHAR(50)) = f.KEY_NO
@@ -124,52 +336,13 @@ public class OrdhuvOptimizedService : IOrdhuvOptimizedService
                     Invoices = new List<InvoiceIndividualDto>(),
                     
                     // Customer data (ORH_KUNR)
-                    Customer = orderReader.IsDBNull(13) ? null : new KunregDto
-                    {
-                        KunKunr = orderReader.GetInt32(13),               // CUST_KUN_KUNR
-                        KunNamn = orderReader.IsDBNull(14) ? null : orderReader.GetString(14), // CUST_KUN_NAMN
-                        KunAdr2 = orderReader.IsDBNull(15) ? null : orderReader.GetString(15), // CUST_KUN_ADR2
-                        KunOrgn = orderReader.IsDBNull(16) ? null : orderReader.GetString(16), // CUST_KUN_ORGN
-                        KunTel1 = orderReader.IsDBNull(17) ? null : orderReader.GetString(17), // CUST_KUN_TEL1
-                        KunTel2 = orderReader.IsDBNull(18) ? null : orderReader.GetString(18), // CUST_KUN_TEL2
-                        KunEpostadress = orderReader.IsDBNull(19) ? null : orderReader.GetString(19), // CUST_KUN_EPOSTADRESS
-                        KunMomsnr = orderReader.IsDBNull(20) ? null : orderReader.GetString(20), // CUST_KUN_MOMSNR
-                        KunKrti = orderReader.IsDBNull(21) ? null : orderReader.GetInt16(21), // CUST_KUN_KRTI
-                        KunFleetpayer = orderReader.IsDBNull(22) ? null : orderReader.GetInt32(22), // CUST_KUN_FLEETPAYER
-                        ReminderDisable = orderReader.IsDBNull(23) ? null : orderReader.GetInt32(23) // CUST_REMINDER_DISABLE
-                    },
+                    Customer = orderReader.IsDBNull(13) ? null : CreateKunregDto(orderReader, 13, 17),
                     
                     // Payer data (ORH_BETKUNR)
-                    Payer = orderReader.IsDBNull(24) ? null : new KunregDto
-                    {
-                        KunKunr = orderReader.GetInt32(24),               // PAYER_KUN_KUNR
-                        KunNamn = orderReader.IsDBNull(25) ? null : orderReader.GetString(25), // PAYER_KUN_NAMN
-                        KunAdr2 = orderReader.IsDBNull(26) ? null : orderReader.GetString(26), // PAYER_KUN_ADR2
-                        KunOrgn = orderReader.IsDBNull(27) ? null : orderReader.GetString(27), // PAYER_KUN_ORGN
-                        KunTel1 = orderReader.IsDBNull(28) ? null : orderReader.GetString(28), // PAYER_KUN_TEL1
-                        KunTel2 = orderReader.IsDBNull(29) ? null : orderReader.GetString(29), // PAYER_KUN_TEL2
-                        KunEpostadress = orderReader.IsDBNull(30) ? null : orderReader.GetString(30), // PAYER_KUN_EPOSTADRESS
-                        KunMomsnr = orderReader.IsDBNull(31) ? null : orderReader.GetString(31), // PAYER_KUN_MOMSNR
-                        KunKrti = orderReader.IsDBNull(32) ? null : orderReader.GetInt16(32), // PAYER_KUN_KRTI
-                        KunFleetpayer = orderReader.IsDBNull(33) ? null : orderReader.GetInt32(33), // PAYER_KUN_FLEETPAYER
-                        ReminderDisable = orderReader.IsDBNull(34) ? null : orderReader.GetInt32(34) // PAYER_REMINDER_DISABLE
-                    },
+                    Payer = orderReader.IsDBNull(23) ? null : CreateKunregDto(orderReader, 23, 27),
                     
                     // Driver data (ORH_DRIVER_NO)
-                    Driver = orderReader.IsDBNull(35) ? null : new KunregDto
-                    {
-                        KunKunr = orderReader.GetInt32(35),               // DRIVER_KUN_KUNR
-                        KunNamn = orderReader.IsDBNull(36) ? null : orderReader.GetString(36), // DRIVER_KUN_NAMN
-                        KunAdr2 = orderReader.IsDBNull(37) ? null : orderReader.GetString(37), // DRIVER_KUN_ADR2
-                        KunOrgn = orderReader.IsDBNull(38) ? null : orderReader.GetString(38), // DRIVER_KUN_ORGN
-                        KunTel1 = orderReader.IsDBNull(39) ? null : orderReader.GetString(39), // DRIVER_KUN_TEL1
-                        KunTel2 = orderReader.IsDBNull(40) ? null : orderReader.GetString(40), // DRIVER_KUN_TEL2
-                        KunEpostadress = orderReader.IsDBNull(41) ? null : orderReader.GetString(41), // DRIVER_KUN_EPOSTADRESS
-                        KunMomsnr = orderReader.IsDBNull(42) ? null : orderReader.GetString(42), // DRIVER_KUN_MOMSNR
-                        KunKrti = orderReader.IsDBNull(43) ? null : orderReader.GetInt16(43), // DRIVER_KUN_KRTI
-                        KunFleetpayer = orderReader.IsDBNull(44) ? null : orderReader.GetInt32(44), // DRIVER_KUN_FLEETPAYER
-                        ReminderDisable = orderReader.IsDBNull(45) ? null : orderReader.GetInt32(45) // DRIVER_REMINDER_DISABLE
-                    }
+                    Driver = orderReader.IsDBNull(33) ? null : CreateKunregDto(orderReader, 33, 37)
                 };
                 
                 results.Add(order);
@@ -304,12 +477,20 @@ public class OrdhuvOptimizedService : IOrdhuvOptimizedService
                     invoiceData[currentInvoiceNo].FortnoxLogs.Add(fortnoxLog);
                 }
                 
-                // Add invoices to their corresponding orders
+                // Add invoices to their corresponding orders and calculate timestamps
                 foreach (var invoice in invoiceData.Values)
                 {
                     var order = results.FirstOrDefault(o => o.OrhDokn == invoice.InvoiceNo);
                     if (order != null)
                     {
+                        // Calculate min timestamp for this invoice
+                        if (invoice.FortnoxLogs.Any())
+                        {
+                            invoice.MinFortnoxTimeStamp = invoice.FortnoxLogs
+                                .Where(log => log.TimeStamp.HasValue)
+                                .Min(log => log.TimeStamp);
+                        }
+                        
                         order.Invoices.Add(invoice);
                         _logger.LogInformation("Added invoice {InvoiceNo} with {LogCount} Fortnox logs to order {OrderNo}", 
                             invoice.InvoiceNo, invoice.FortnoxLogs.Count, order.OrhDokn);
@@ -317,6 +498,22 @@ public class OrdhuvOptimizedService : IOrdhuvOptimizedService
                     else
                     {
                         _logger.LogWarning("Could not find order for invoice {InvoiceNo}", invoice.InvoiceNo);
+                    }
+                }
+                
+                // Calculate min and max timestamps for each order across all invoices
+                foreach (var order in results)
+                {
+                    var allTimestamps = order.Invoices
+                        .SelectMany(invoice => invoice.FortnoxLogs)
+                        .Where(log => log.TimeStamp.HasValue)
+                        .Select(log => log.TimeStamp!.Value)
+                        .ToList();
+                    
+                    if (allTimestamps.Any())
+                    {
+                        order.MinFortnoxTimeStamp = allTimestamps.Min();
+                        order.MaxFortnoxTimeStamp = allTimestamps.Max();
                     }
                 }
                 

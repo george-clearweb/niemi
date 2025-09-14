@@ -19,6 +19,10 @@ public class OrdhuvDto
     public int? OrhBetkunr { get; set; }                // ORH_BETKUNR - Payment Customer Number (only if not 0)
     public int? OrhDriverNo { get; set; }               // ORH_DRIVER_NO - Driver Number (only if not 0)
     
+    // Timestamp information from FortnoxLogs across all invoices
+    public DateTime? MinFortnoxTimeStamp { get; set; }  // Earliest timestamp from all FortnoxLogs for this order
+    public DateTime? MaxFortnoxTimeStamp { get; set; }  // Latest timestamp from all FortnoxLogs for this order
+    
     // Navigation properties
     public List<InvoiceIndividualDto> Invoices { get; set; } = new List<InvoiceIndividualDto>();
     public KunregDto? Customer { get; set; }            // Customer (ORH_KUNR -> KUNREG.KUN_KUNR)

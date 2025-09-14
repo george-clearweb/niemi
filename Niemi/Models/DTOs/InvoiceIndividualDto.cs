@@ -38,6 +38,9 @@ public class InvoiceIndividualDto
     // Invoice Information
     public int InvoiceNo { get; set; }                  // INVOICE_NO
     
+    // Timestamp information
+    public DateTime? MinFortnoxTimeStamp { get; set; }  // Earliest timestamp from FortnoxLogs for this invoice
+    
     // Nested Fortnox Logs
     public List<FortnoxLogDto> FortnoxLogs { get; set; } = new List<FortnoxLogDto>();
 }
