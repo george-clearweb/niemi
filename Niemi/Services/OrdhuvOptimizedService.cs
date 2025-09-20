@@ -216,10 +216,11 @@ namespace Niemi.Services;
 
     private static string? ProcessPhoneNumbers(string? tel1, string? tel2, string? tel3)
     {
-        var phoneNumbers = new[] { tel1, tel2, tel3 }.Where(p => !string.IsNullOrEmpty(p)).ToArray();
+        // Test priority order: tel2 first, then tel1, then tel3
+        var phoneNumbers = new[] { tel2, tel1, tel3 }.Where(p => !string.IsNullOrEmpty(p)).ToArray();
             
-            foreach (var phone in phoneNumbers)
-            {
+        foreach (var phone in phoneNumbers)
+        {
             // Clean the phone number
             var cleanPhone = System.Text.RegularExpressions.Regex.Replace(phone ?? "", @"[^\d]", "");
             
@@ -229,10 +230,10 @@ namespace Niemi.Services;
                 // Format as +467xxxxxxxx
                 return "+46" + cleanPhone.Substring(1);
             }
-            }
-            
-            return null;
         }
+        
+        return null;
+    }
 
     private static (string firstName, string lastName, string companyName) ParseName(string? kunNamn, string? customerType)
     {
@@ -451,6 +452,12 @@ namespace Niemi.Services;
                 orderCommand.Parameters.AddWithValue("@orhStat", orhStat);
             }
 
+            // Log the SQL command (shortened version)
+            var shortSql = $"SELECT DISTINCT o.ORH_DOKN, o.ORH_KUNR, o.ORH_DOKD, o.ORH_RENR, o.ORH_STAT, o.ORH_LOVDAT, o.ORH_FAKTURERAD, o.ORH_NAMN, o.ORH_SUMMAINKL, o.ORH_CREATED_AT, o.ORH_UPDATED_AT, CASE WHEN o.ORH_BETKUNR > 0 THEN o.ORH_BETKUNR ELSE NULL END as ORH_BETKUNR, CASE WHEN o.ORH_DRIVER_NO > 0 THEN o.ORH_DRIVER_NO ELSE NULL END as ORH_DRIVER_NO, [Customer/Payer/Driver/Vehicle data] FROM ORDHUV o INNER JOIN INVOICEINDIVIDUAL i ON o.ORH_DOKN = i.INVOICE_NO INNER JOIN FORTNOX_LOG f ON CAST(i.INVOICE_NO AS VARCHAR(50)) = f.KEY_NO LEFT JOIN KUNREG c ON o.ORH_KUNR = c.KUN_KUNR LEFT JOIN KUNREG p ON o.ORH_BETKUNR = p.KUN_KUNR LEFT JOIN KUNREG d ON o.ORH_DRIVER_NO = d.KUN_KUNR LEFT JOIN BILREG b ON o.ORH_RENR = b.BIL_RENR WHERE f.TIME_STAMP >= @fromDate AND f.TIME_STAMP <= @toDate AND f.KEY_NO IS NOT NULL AND f.KEY_NO != '' {(!string.IsNullOrEmpty(orhStat) ? "AND o.ORH_STAT = @orhStat" : "")} ORDER BY o.ORH_DOKD DESC, o.ORH_DOKN DESC";
+            _logger.LogInformation("Executing SQL on {Environment}: {SqlQuery}", environment, shortSql);
+            _logger.LogInformation("SQL Parameters: fromDate={FromDate}, toDate={ToDate}, orhStat={OrhStat}", 
+                fromDate, toDate, orhStat);
+
             // Get all distinct orders
             using var orderReader = await orderCommand.ExecuteReaderAsync();
             var orderNumbers = new List<int>();
@@ -546,6 +553,12 @@ namespace Niemi.Services;
 
                 invoiceCommand.Parameters.AddWithValue("@fromDate", fromDate);
                 invoiceCommand.Parameters.AddWithValue("@toDate", toDate);
+
+                // Log the invoice SQL command (shortened version)
+                var shortInvoiceSql = $"SELECT i.VEHICLE_NO, i.MANUFACTURER, i.MODEL, i.VIN, i.REGISTRATION_DATE, i.MODEL_YEAR, [Owner/Payer/Driver data], i.INVOICE_NO, f.ID, f.TIME_STAMP, f.TRANSACTION_NO, f.DESCRIPTION, f.ERROR_CODE, f.ERROR_MESSAGE, f.LOG_TYPE, f.KEY_NO FROM INVOICEINDIVIDUAL i INNER JOIN FORTNOX_LOG f ON CAST(i.INVOICE_NO AS VARCHAR(50)) = f.KEY_NO WHERE i.INVOICE_NO IN ({orderNumbersParam}) AND f.KEY_NO IS NOT NULL AND f.KEY_NO != '' AND f.TIME_STAMP >= @fromDate AND f.TIME_STAMP <= @toDate ORDER BY i.INVOICE_NO, f.TIME_STAMP";
+                _logger.LogInformation("Executing Invoice SQL on {Environment}: {SqlQuery}", environment, shortInvoiceSql);
+                _logger.LogInformation("Invoice SQL Parameters: fromDate={FromDate}, toDate={ToDate}, orderNumbers={OrderNumbers}", 
+                    fromDate, toDate, orderNumbersParam);
 
                 using var invoiceReader = await invoiceCommand.ExecuteReaderAsync();
                 var invoiceCount = 0;
@@ -664,6 +677,11 @@ namespace Niemi.Services;
                         {
                             ordrRadCommand.Parameters.AddWithValue($"@ordDokn{i}", orderNumbers[i]);
                         }
+
+                        // Log the ORDRAD SQL command (shortened version)
+                        var shortOrdrRadSql = $"SELECT ORD_DOKN, ORD_RADNR, ORD_ARTN, ORD_ARTB, ORD_ANTA, ORD_INPRIS, ORD_RABA, ORD_MOMS, ORD_TYP, ORD_KOD, ORD_SUMMAEXKL, ORD_CREATED_AT, ORD_UPDATED_AT FROM ORDRAD WHERE ORD_DOKN IN ({string.Join(",", orderNumbers)}) ORDER BY ORD_DOKN, ORD_RADNR";
+                        _logger.LogInformation("Executing ORDRAD SQL on {Environment}: {SqlQuery}", environment, shortOrdrRadSql);
+                        _logger.LogInformation("ORDRAD SQL Parameters: orderNumbers={OrderNumbers}", string.Join(",", orderNumbers));
 
                         using var ordrRadReader = await ordrRadCommand.ExecuteReaderAsync();
                         

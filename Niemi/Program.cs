@@ -30,7 +30,10 @@ void ConfigureServices(WebApplicationBuilder builder)
 {
     // Add Entity Framework
     builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseSqlServer(builder.Configuration.GetConnectionString("AZURE_SQL_CONNECTION_STRING")));
+        options.UseSqlServer(builder.Configuration.GetConnectionString("AZURE_SQL_CONNECTION_STRING"))
+               .LogTo(Console.WriteLine, LogLevel.Information)
+               .EnableSensitiveDataLogging()
+               .EnableDetailedErrors());
 
     // Configure JSON serialization to ignore null values
     builder.Services.ConfigureHttpJsonOptions(options =>
@@ -120,141 +123,8 @@ void ConfigureEndpoints(WebApplication app)
     .WithName("GetLaginkHd")
     .WithOpenApi();
 
-    // ORDHUV endpoints
-    app.MapGet("/ordhuv", async (
-        HttpContext httpContext,
-        ILogger<Program> logger,
-        int? skip,
-        int? take,
-        IOrdhuvService ordhuvService) =>
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        
-        try
-        {
-            var results = await ordhuvService.GetOrdhuvDataAsync(
-                skip ?? 0, 
-                take ?? 100);
-                
-            sw.Stop();
-            logger.LogInformation("ORDHUV request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            return Results.Ok(results);
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-            logger.LogError(ex, "ORDHUV request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            return Results.Problem($"Query failed: {ex.Message}");
-        }
-    })
-    .WithName("GetOrdhuv")
-    .WithOpenApi();
 
-    app.MapGet("/ordhuv/{orderNr:int}", async (
-        HttpContext httpContext,
-        ILogger<Program> logger,
-        int orderNr,
-        IOrdhuvService ordhuvService) =>
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        
-        try
-        {
-            var result = await ordhuvService.GetOrdhuvByIdAsync(orderNr);
-                
-            sw.Stop();
-            logger.LogInformation("ORDHUV by ID request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            
-            if (result == null)
-                return Results.NotFound($"Order with number {orderNr} not found");
-                
-            return Results.Ok(result);
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-            logger.LogError(ex, "ORDHUV by ID request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            return Results.Problem($"Query failed: {ex.Message}");
-        }
-    })
-    .WithName("GetOrdhuvById")
-    .WithOpenApi();
-
-    // Invoiced orders by date endpoints
-    app.MapGet("/ordhuv/invoiced", async (
-        HttpContext httpContext,
-        ILogger<Program> logger,
-        [Required] DateTime fromDate,
-        [Required] DateTime toDate,
-        int? skip,
-        int? take,
-        IOrdhuvService ordhuvService) =>
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        
-        try
-        {
-            if (fromDate > toDate)
-            {
-                return Results.BadRequest("fromDate must be less than or equal to toDate");
-            }
-
-            var results = await ordhuvService.GetInvoicedOrdersByDateAsync(
-                fromDate, 
-                toDate, 
-                skip ?? 0, 
-                take ?? 100);
-                
-            sw.Stop();
-            logger.LogInformation("Invoiced ORDHUV request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            return Results.Ok(results);
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-            logger.LogError(ex, "Invoiced ORDHUV request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            return Results.Problem($"Query failed: {ex.Message}");
-        }
-    })
-    .WithName("GetInvoicedOrdhuv")
-    .WithOpenApi();
-
-    // Orders with invoices by date endpoints
-    app.MapGet("/ordhuv/with-invoices", async (
-        HttpContext httpContext,
-        ILogger<Program> logger,
-        [Required] DateTime fromDate,
-        [Required] DateTime toDate,
-        IOrdhuvService ordhuvService) =>
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        
-        try
-        {
-            if (fromDate > toDate)
-            {
-                return Results.BadRequest("fromDate must be less than or equal to toDate");
-            }
-
-            var results = await ordhuvService.GetOrdersWithInvoicesByDateAsync(
-                fromDate, 
-                toDate);
-                
-            sw.Stop();
-            logger.LogInformation("Orders with invoices request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            return Results.Ok(results);
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-            logger.LogError(ex, "Orders with invoices request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            return Results.Problem($"Query failed: {ex.Message}");
-        }
-    })
-    .WithName("GetOrdersWithInvoices")
-    .WithOpenApi();
-
-    // Temporary endpoint to discover table structure
+    // Temporary endpoint to discover table structure (hidden from Swagger)
     app.MapGet("/ordhuv/structure", async (
         HttpContext httpContext,
         ILogger<Program> logger,
@@ -272,9 +142,9 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetOrdhuvStructure")
-    .WithOpenApi();
+    .ExcludeFromDescription();
 
-    // Temporary endpoint to discover INVOICEINDIVIDUAL table structure
+    // Temporary endpoint to discover INVOICEINDIVIDUAL table structure (hidden from Swagger)
     app.MapGet("/invoice/structure", async (
         HttpContext httpContext,
         ILogger<Program> logger,
@@ -292,9 +162,9 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetInvoiceStructure")
-    .WithOpenApi();
+    .ExcludeFromDescription();
 
-    // Temporary endpoint to discover FORTNOX_LOG table structure
+    // Temporary endpoint to discover FORTNOX_LOG table structure (hidden from Swagger)
     app.MapGet("/fortnox/structure", async (
         HttpContext httpContext,
         ILogger<Program> logger,
@@ -312,9 +182,9 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetFortnoxStructure")
-    .WithOpenApi();
+    .ExcludeFromDescription();
 
-    // Temporary endpoint to discover KUNREG table structure
+    // Temporary endpoint to discover KUNREG table structure (hidden from Swagger)
     app.MapGet("/kunreg/structure", async (
         HttpContext httpContext,
         ILogger<Program> logger,
@@ -332,9 +202,9 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetKunregStructure")
-    .WithOpenApi();
+    .ExcludeFromDescription();
 
-    // Temporary endpoint to discover BILREG table structure
+    // Temporary endpoint to discover BILREG table structure (hidden from Swagger)
     app.MapGet("/bilreg/structure", async (
         HttpContext httpContext,
         ILogger<Program> logger,
@@ -352,10 +222,10 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetBilregStructure")
-    .WithOpenApi();
+    .ExcludeFromDescription();
 
     // Database environment management endpoints
-    app.MapGet("/database/environments", (
+    app.MapGet("/database", (
         HttpContext httpContext,
         ILogger<Program> logger,
         IDatabaseConfigService databaseConfig) =>
@@ -364,7 +234,16 @@ void ConfigureEndpoints(WebApplication app)
         {
             var environments = databaseConfig.GetAvailableEnvironments();
             var current = databaseConfig.GetCurrentEnvironment();
-            return Results.Ok(new { current, available = environments });
+            
+            // Get facility information for each environment
+            var facilities = environments.Select(env => new {
+                database = env,
+                facility = GetFacilityInfo(env)
+            }).ToArray();
+            
+            return Results.Ok(new { 
+                facilities = facilities
+            });
         }
         catch (Exception ex)
         {
@@ -372,11 +251,11 @@ void ConfigureEndpoints(WebApplication app)
             return Results.Problem($"Failed to get environments: {ex.Message}");
         }
     })
-    .WithName("GetDatabaseEnvironments")
+    .WithName("GetDatabase")
     .WithOpenApi();
 
-    // Optimized endpoint for orders with invoices
-    app.MapGet("/ordhuv/with-invoices-optimized", async (
+    // Main orders endpoint
+    app.MapGet("/ordhuv", async (
         HttpContext httpContext,
         ILogger<Program> logger,
         [Required] DateTime fromDate,
@@ -415,10 +294,10 @@ void ConfigureEndpoints(WebApplication app)
             return Results.Problem($"Query failed: {ex.Message}");
         }
     })
-    .WithName("GetOrdersWithInvoicesOptimized")
+    .WithName("GetOrdhuv")
     .WithOpenApi();
 
-    // ORDRAD endpoints
+    // ORDRAD endpoints (hidden from Swagger)
     app.MapGet("/ordrad/structure", async (
         HttpContext httpContext,
         ILogger<Program> logger,
@@ -442,9 +321,9 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetOrdrRadStructure")
-    .WithOpenApi();
+    .ExcludeFromDescription();
 
-    app.MapGet("/ordrad/keyword-categories", async (
+    app.MapGet("/ordrad/categories", async (
         HttpContext httpContext,
         ILogger<Program> logger,
         IOrdrRadService ordrRadService) =>
@@ -466,7 +345,7 @@ void ConfigureEndpoints(WebApplication app)
             return Results.Problem($"Query failed: {ex.Message}");
         }
     })
-    .WithName("GetKeywordCategories")
+    .WithName("GetCategories")
     .WithOpenApi();
 
     // Rule.io subscribers endpoint
