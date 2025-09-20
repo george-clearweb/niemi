@@ -1,0 +1,23 @@
+### Test POST /ordhuv endpoint with license plates (simplified format)
+POST https://localhost:7000/ordhuv
+Content-Type: application/json
+
+["BWL32X", "LBO058", "UBJ02T"]
+
+### Test POST /ordhuv endpoint with single license plate
+POST https://localhost:7000/ordhuv
+Content-Type: application/json
+
+["XYZ789"]
+
+### Test POST /ordhuv endpoint with empty license plates (should return error)
+POST https://localhost:7000/ordhuv
+Content-Type: application/json
+
+[]
+
+### Test POST /ordhuv endpoint with empty license plate (should return error)
+POST https://localhost:7000/ordhuv
+Content-Type: application/json
+
+["", "ABC123"]

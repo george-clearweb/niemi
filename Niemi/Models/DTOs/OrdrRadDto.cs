@@ -19,4 +19,7 @@ public class OrdrRadDto
     // Matched keyword and category from ORD_ARTB analysis
     public string? MatchedKeyword { get; set; }          // Matched keyword from keyword categories
     public string? MatchedCategory { get; set; }         // Matched category from keyword categories
+    
+    // Count/Fraction for proportional calculations (sum of all rows for a license plate = 1.0)
+    public double Count { get; set; }                    // Fraction/Count for this row
 }

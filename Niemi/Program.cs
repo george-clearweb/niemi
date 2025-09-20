@@ -297,6 +297,56 @@ void ConfigureEndpoints(WebApplication app)
     .WithName("GetOrdhuv")
     .WithOpenApi();
 
+    // POST endpoint for orders by license plates
+    app.MapPost("/ordhuv", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        List<string> request,
+        string? environment,
+        [FromQuery] string[]? environments,
+        string? orhStat,
+        string? customerType,
+        IOrdhuvOptimizedService ordhuvOptimizedService) =>
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        try
+        {
+            if (request == null || !request.Any())
+            {
+                return Results.BadRequest("At least one license plate is required");
+            }
+
+            // Validate that all license plates are not empty
+            if (request.Any(lp => string.IsNullOrEmpty(lp)))
+            {
+                return Results.BadRequest("All license plates must have a valid value");
+            }
+
+            // Convert string array to LicensePlateItem objects for the service
+            var licensePlateItems = request.Select(lp => new LicensePlateItem { Licenseplate = lp }).ToList();
+
+            var results = await ordhuvOptimizedService.GetOrdersByLicensePlatesAsync(
+                licensePlateItems,
+                environment,
+                environments,
+                orhStat,
+                customerType);
+                
+            sw.Stop();
+            logger.LogInformation("Orders by license plates request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Ok(results);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "Orders by license plates request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Problem($"Query failed: {ex.Message}");
+        }
+    })
+    .WithName("PostOrdhuv")
+    .WithOpenApi();
+
     // ORDRAD endpoints (hidden from Swagger)
     app.MapGet("/ordrad/structure", async (
         HttpContext httpContext,

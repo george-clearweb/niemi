@@ -13,6 +13,7 @@ public class OrdhuvDto
     public string? OrhFakturerad { get; set; }          // ORH_FAKTURERAD - Invoiced
     public string? OrhNamn { get; set; }                // ORH_NAMN - Customer Name
     public double? OrhSummainkl { get; set; }           // ORH_SUMMAINKL - Sum Including
+    public double? OrhSummaexkl { get; set; }           // ORH_SUMMAEXKL - Sum Excluding
     public DateTime? OrhCreatedAt { get; set; }         // ORH_CREATED_AT - Created At
     public DateTime? OrhUpdatedAt { get; set; }         // ORH_UPDATED_AT - Updated At
     
