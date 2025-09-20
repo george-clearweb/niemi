@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi.Models;
 using FirebirdSql.Data.FirebirdClient;
 using Niemi.Models;
+using Niemi.Models.DTOs;
 using Niemi.Services;
 using Microsoft.EntityFrameworkCore;
 using Niemi.Data;
@@ -57,6 +58,9 @@ void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddScoped<IOrdhuvService, OrdhuvService>();
     builder.Services.AddScoped<IOrdhuvOptimizedService, OrdhuvOptimizedService>();
     builder.Services.AddScoped<IOrdrRadService, OrdrRadService>();
+    
+    // HTTP client for Rule.io
+    builder.Services.AddHttpClient<IRuleIoService, RuleIoService>();
 }
 
 void ConfigureApp(WebApplication app)
@@ -460,6 +464,46 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetKeywordCategories")
+    .WithOpenApi();
+
+    // Rule.io subscribers endpoint
+    app.MapPost("/rule-io/subscribers", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        RuleIoSubscribersRequestDto request,
+        IRuleIoService ruleIoService) =>
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        try
+        {
+            if (request.Subscribers == null || !request.Subscribers.Any())
+            {
+                return Results.BadRequest("At least one subscriber is required");
+            }
+
+            var result = await ruleIoService.CreateSubscribersAsync(request);
+                
+            sw.Stop();
+            logger.LogInformation("Rule.io subscribers request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            
+            if (result.Success)
+            {
+                return Results.Ok(result);
+            }
+            else
+            {
+                return Results.BadRequest(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "Rule.io subscribers request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Problem($"Request failed: {ex.Message}");
+        }
+    })
+    .WithName("CreateRuleIoSubscribers")
     .WithOpenApi();
 
 }
