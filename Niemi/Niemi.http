@@ -119,3 +119,118 @@ Content-Type: application/json
 }
 
 ###
+
+# HttpBin Test Endpoint (no authentication)
+POST {{Niemi_HostAddress}}/httpbin/test
+Content-Type: application/json
+
+{
+    "update_on_duplicate": true,
+    "tags": [
+        "Infoflex"
+    ],
+    "subscribers": [
+        {
+            "email": "george.johnsson@clearweb.se",
+            "phone_number": "+46761657629",
+            "language": "sv",
+            "fields": [
+                {
+                    "key": "Kundinfo.Personnr",
+                    "value": "199005042958",
+                    "type": "text"
+                },
+                {
+                    "key": "Namn.Förnamn",
+                    "value": "George",
+                    "type": "text"
+                },
+                {
+                    "key": "Namn.Efternamn",
+                    "value": "Johnsson",
+                    "type": "text"
+                },
+                {
+                    "key": "Adress.Stad",
+                    "value": "Stockholm",
+                    "type": "text"
+                },
+                {
+                    "key": "Datum.Födelsedag",
+                    "value": "1990-05-04",
+                    "type": "date"
+                },
+                {
+                    "key": "Infoflex.Datum",
+                    "value": "2025-09-16",
+                    "type": "date"
+                },
+                {
+                    "key": "Infoflex.Doknr",
+                    "value": "124",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Belopp",
+                    "value": "1000",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Anlaggning",
+                    "value": "NIEMI2",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.AnlaggningEpost",
+                    "value": "noreply@niemibil.se",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.AnlaggningTfn",
+                    "value": "0920-23 00 88",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Fordonstyp",
+                    "value": "Personbil",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Marke",
+                    "value": "Mitsubishi",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Miltal",
+                    "value": "12346",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Modell",
+                    "value": "Outlander PHEV",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Modellar",
+                    "value": "2020",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Regnr",
+                    "value": "ETZ67W",
+                    "type": "text"
+                },
+                {
+                    "key": "Infoflex.Ordrad",
+                    "value": [
+                        "Felsökning",
+                        "Service"
+                    ],
+                    "type": "multiple"
+                }
+            ]
+        }
+    ]
+}
+
+###

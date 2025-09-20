@@ -61,6 +61,9 @@ void ConfigureServices(WebApplicationBuilder builder)
     
     // HTTP client for Rule.io
     builder.Services.AddHttpClient<IRuleIoService, RuleIoService>();
+    
+    // HTTP client for HttpBin testing
+    builder.Services.AddHttpClient<IHttpBinService, HttpBinService>();
 }
 
 void ConfigureApp(WebApplication app)
@@ -506,4 +509,170 @@ void ConfigureEndpoints(WebApplication app)
     .WithName("CreateRuleIoSubscribers")
     .WithOpenApi();
 
+    // HttpBin test endpoint
+    app.MapPost("/httpbin/test", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        RuleIoSubscribersRequestDto request,
+        IHttpBinService httpBinService) =>
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        try
+        {
+            if (request.Subscribers == null || !request.Subscribers.Any())
+            {
+                return Results.BadRequest("At least one subscriber is required");
+            }
+
+            var result = await httpBinService.SendToHttpBinAsync(request);
+                
+            sw.Stop();
+            logger.LogInformation("HttpBin test request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            
+            if (result.Success)
+            {
+                return Results.Ok(result);
+            }
+            else
+            {
+                return Results.BadRequest(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "HttpBin test request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Problem($"Request failed: {ex.Message}");
+        }
+    })
+    .WithName("TestHttpBin")
+    .WithOpenApi();
+
+    // Endpoint to fetch orders and forward to HttpBin for testing
+    app.MapPost("/test-flow", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        [Required] DateTime fromDate,
+        [Required] DateTime toDate,
+        string? orhStat,
+        string? customerType,
+        IOrdhuvOptimizedService ordhuvOptimizedService,
+        IHttpBinService httpBinService) =>
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        try
+        {
+            if (fromDate > toDate)
+            {
+                return Results.BadRequest("fromDate must be less than or equal to toDate");
+            }
+
+            // Step 1: Fetch orders from the optimized endpoint
+            logger.LogInformation("Fetching orders from {FromDate} to {ToDate} with orhStat={OrhStat}, customerType={CustomerType}", 
+                fromDate, toDate, orhStat, customerType);
+            
+            var orders = await ordhuvOptimizedService.GetOrdersWithInvoicesByDateAsync(
+                fromDate, 
+                toDate,
+                null, // environment
+                null, // environments
+                orhStat,
+                customerType);
+                
+            logger.LogInformation("Found {OrderCount} orders", orders.Count());
+            
+            // Step 2: Transform orders to Rule.io format (single request with all subscribers)
+            var ruleIoRequest = TransformOrdersToRuleIoFormat(orders);
+            
+            // Step 3: Send the single request to HttpBin
+            var result = await httpBinService.SendToHttpBinAsync(ruleIoRequest);
+                
+            sw.Stop();
+            logger.LogInformation("Test flow completed in {ElapsedMs}ms. Processed {OrderCount} orders in single request", 
+                sw.ElapsedMilliseconds, orders.Count());
+            
+            return Results.Ok(new {
+                summary = new {
+                    orderCount = orders.Count(),
+                    subscriberCount = ruleIoRequest.Subscribers.Count,
+                    elapsedMs = sw.ElapsedMilliseconds
+                },
+                request = ruleIoRequest,
+                response = result
+            });
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "Test flow failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Problem($"Test flow failed: {ex.Message}");
+        }
+    })
+    .WithName("TestFlow")
+    .WithOpenApi();
+
+}
+
+// Helper function to transform orders to Rule.io format
+static RuleIoSubscribersRequestDto TransformOrdersToRuleIoFormat(IEnumerable<OrdhuvDto> orders)
+{
+    var subscribers = new List<RuleIoSubscriberDto>();
+    
+    foreach (var order in orders)
+    {
+        // Create subscriber data from order
+        var subscriber = new RuleIoSubscriberDto
+        {
+            Email = order.Customer?.KunEpostadress ?? "",
+            PhoneNumber = order.Customer?.MobilePhone,
+            Language = "sv",
+            Fields = new List<RuleIoFieldDto>
+            {
+                new() { Key = "Kundinfo.Personnr", Value = order.Customer?.KunOrgn ?? "", Type = "text" },
+                new() { Key = "Namn.Förnamn", Value = order.Customer?.FirstName ?? "", Type = "text" },
+                new() { Key = "Namn.Efternamn", Value = order.Customer?.LastName ?? "", Type = "text" },
+                new() { Key = "Adress.Stad", Value = order.Customer?.City ?? "", Type = "text" },
+                new() { Key = "Datum.Födelsedag", Value = order.Customer?.BirthDate?.ToString("yyyy-MM-dd") ?? "", Type = "date" },
+                new() { Key = "Infoflex.Datum", Value = order.OrhDokd?.ToString("yyyy-MM-dd") ?? "", Type = "date" },
+                new() { Key = "Infoflex.Doknr", Value = order.OrhDokn.ToString(), Type = "text" },
+                new() { Key = "Infoflex.Belopp", Value = order.OrhSummainkl?.ToString() ?? "", Type = "text" },
+                new() { Key = "Infoflex.Anlaggning", Value = GetFacilityInfo(order.Database ?? ""), Type = "multiple" },
+                new() { Key = "Infoflex.Fordonstyp", Value = order.Vehicle?.BilVehiclecat ?? "", Type = "text" },
+                new() { Key = "Infoflex.Marke", Value = order.Vehicle?.Fabrikat ?? "", Type = "text" },
+                new() { Key = "Infoflex.Miltal", Value = "0", Type = "text" }, // Default value
+                new() { Key = "Infoflex.Modell", Value = order.Vehicle?.BilBetekning ?? "", Type = "text" },
+                new() { Key = "Infoflex.Modellar", Value = order.Vehicle?.BilArsm.ToString() ?? "", Type = "text" },
+                new() { Key = "Infoflex.Regnr", Value = order.OrhRenr ?? "", Type = "text" },
+                new() { Key = "Infoflex.Ordrad", Value = order.Categories?.ToArray() ?? new string[0], Type = "multiple" }
+            }
+        };
+        
+        subscribers.Add(subscriber);
+    }
+    
+    // Create single request with all subscribers
+    return new RuleIoSubscribersRequestDto
+    {
+        UpdateOnDuplicate = true,
+        Tags = new List<string> { "Infoflex" },
+        Subscribers = subscribers
+    };
+}
+
+// Helper function to get facility information as an array
+static string[] GetFacilityInfo(string database)
+{
+    return database.ToUpper() switch
+    {
+        "NIE2V" => new[] { "Niemi Boden", "info@niemiboden.se", "0920-23 00 88" },
+        "NIEM3" => new[] { "Niemi Luleå", "info@niemilulea.se", "0920-23 00 89" },
+        "NIEM4" => new[] { "Niemi Piteå", "info@niemipitea.se", "0920-23 00 90" },
+        "NIEM5" => new[] { "Niemi Skellefteå", "info@niemiskelleftea.se", "0920-23 00 91" },
+        "NIEM6" => new[] { "Niemi Umeå", "info@niemiumea.se", "0920-23 00 92" },
+        "NIEM7" => new[] { "Niemi Örnsköldsvik", "info@niemiornskoldsvik.se", "0920-23 00 93" },
+        "NIEMI" => new[] { "Niemi Stockholm", "info@niemistockholm.se", "0920-23 00 94" },
+        _ => new[] { "Niemi Unknown", "noreply@niemibil.se", "0920-23 00 88" }
+    };
 }

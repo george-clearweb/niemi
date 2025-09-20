@@ -198,13 +198,19 @@ namespace Niemi.Services;
         return ("Company", null);
     }
 
-    private static string GetCustomerTypeFilter(string customerType)
+    private static IEnumerable<OrdhuvDto> FilterByCustomerType(IEnumerable<OrdhuvDto> orders, string customerType)
     {
         return customerType?.ToLower() switch
         {
-            "private" => "AND c.KUN_ORGN SIMILAR TO '[0-9]{6}-[0-9]{4}'",
-            "company" => "AND (c.KUN_ORGN IS NULL OR c.KUN_ORGN NOT SIMILAR TO '[0-9]{6}-[0-9]{4}')",
-            _ => ""
+            "private" => orders.Where(order => 
+                order.Customer?.CustomerType?.Equals("Private", StringComparison.OrdinalIgnoreCase) == true ||
+                order.Payer?.CustomerType?.Equals("Private", StringComparison.OrdinalIgnoreCase) == true ||
+                order.Driver?.CustomerType?.Equals("Private", StringComparison.OrdinalIgnoreCase) == true),
+            "company" => orders.Where(order => 
+                order.Customer?.CustomerType?.Equals("Company", StringComparison.OrdinalIgnoreCase) == true ||
+                order.Payer?.CustomerType?.Equals("Company", StringComparison.OrdinalIgnoreCase) == true ||
+                order.Driver?.CustomerType?.Equals("Company", StringComparison.OrdinalIgnoreCase) == true),
+            _ => orders
         };
     }
 
@@ -309,6 +315,15 @@ namespace Niemi.Services;
             foreach (var envResults in environmentResults)
             {
                 allResults.AddRange(envResults);
+            }
+            
+            // Apply customerType filtering if specified
+            if (!string.IsNullOrEmpty(customerType))
+            {
+                var originalCount = allResults.Count;
+                allResults = FilterByCustomerType(allResults, customerType).ToList();
+                _logger.LogInformation("Applied customerType filter '{CustomerType}': {OriginalCount} -> {FilteredCount} orders", 
+                    customerType, originalCount, allResults.Count);
             }
             
             sw.Stop();
@@ -426,7 +441,6 @@ namespace Niemi.Services;
                   AND f.KEY_NO IS NOT NULL 
                   AND f.KEY_NO != ''
                   {(!string.IsNullOrEmpty(orhStat) ? "AND o.ORH_STAT = @orhStat" : "")}
-                  {(!string.IsNullOrEmpty(customerType) ? GetCustomerTypeFilter(customerType) : "")}
                 ORDER BY o.ORH_DOKD DESC, o.ORH_DOKN DESC";
                 
             using var orderCommand = new FbCommand(sqlQuery, connection);
