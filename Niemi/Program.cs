@@ -49,9 +49,14 @@ void ConfigureServices(WebApplicationBuilder builder)
         });
     });
 
+    // Database configuration service
+    builder.Services.AddSingleton<IDatabaseConfigService, DatabaseConfigService>();
+    
+    // Business services
     builder.Services.AddScoped<ILaginkService, LaginkService>();
     builder.Services.AddScoped<IOrdhuvService, OrdhuvService>();
     builder.Services.AddScoped<IOrdhuvOptimizedService, OrdhuvOptimizedService>();
+    builder.Services.AddScoped<IOrdrRadService, OrdrRadService>();
 }
 
 void ConfigureApp(WebApplication app)
@@ -342,12 +347,37 @@ void ConfigureEndpoints(WebApplication app)
     .WithName("GetBilregStructure")
     .WithOpenApi();
 
+    // Database environment management endpoints
+    app.MapGet("/database/environments", (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        IDatabaseConfigService databaseConfig) =>
+    {
+        try
+        {
+            var environments = databaseConfig.GetAvailableEnvironments();
+            var current = databaseConfig.GetCurrentEnvironment();
+            return Results.Ok(new { current, available = environments });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get database environments");
+            return Results.Problem($"Failed to get environments: {ex.Message}");
+        }
+    })
+    .WithName("GetDatabaseEnvironments")
+    .WithOpenApi();
+
     // Optimized endpoint for orders with invoices
     app.MapGet("/ordhuv/with-invoices-optimized", async (
         HttpContext httpContext,
         ILogger<Program> logger,
         [Required] DateTime fromDate,
         [Required] DateTime toDate,
+        string? environment,
+        string[]? environments,
+        string? orhStat,
+        string? customerType,
         IOrdhuvOptimizedService ordhuvOptimizedService) =>
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -361,7 +391,11 @@ void ConfigureEndpoints(WebApplication app)
 
             var results = await ordhuvOptimizedService.GetOrdersWithInvoicesByDateAsync(
                 fromDate, 
-                toDate);
+                toDate,
+                environment,
+                environments,
+                orhStat,
+                customerType);
                 
             sw.Stop();
             logger.LogInformation("Optimized orders with invoices request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
@@ -375,6 +409,57 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("GetOrdersWithInvoicesOptimized")
+    .WithOpenApi();
+
+    // ORDRAD endpoints
+    app.MapGet("/ordrad/structure", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        IOrdrRadService ordrRadService) =>
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        try
+        {
+            var results = await ordrRadService.GetOrdrRadStructureAsync();
+                
+            sw.Stop();
+            logger.LogInformation("ORDRAD structure request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Ok(results);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "ORDRAD structure request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Problem($"Query failed: {ex.Message}");
+        }
+    })
+    .WithName("GetOrdrRadStructure")
+    .WithOpenApi();
+
+    app.MapGet("/ordrad/keyword-categories", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        IOrdrRadService ordrRadService) =>
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        try
+        {
+            var results = await ordrRadService.GetKeywordCategoriesAsync();
+                
+            sw.Stop();
+            logger.LogInformation("Keyword categories request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Ok(results);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "Keyword categories request failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Problem($"Query failed: {ex.Message}");
+        }
+    })
+    .WithName("GetKeywordCategories")
     .WithOpenApi();
 
 }

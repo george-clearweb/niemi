@@ -530,8 +530,7 @@ public class OrdhuvService : IOrdhuvService
             _logger.LogInformation("Orders with invoices query completed in {ElapsedMs}ms. Found {Count} orders with their invoices", 
                 sw.ElapsedMilliseconds, results.Count);
 
-            // Clean up empty strings and zero values by setting them to null
-            CleanupEmptyValues(results);
+            // Removed reflection-based cleanup for performance
 
             return results;
         }
@@ -706,71 +705,6 @@ public class OrdhuvService : IOrdhuvService
         }
     }
 
-    private void CleanupEmptyValues(List<Ordhuv> orders)
-    {
-        foreach (var order in orders)
-        {
-            // Clean up all properties using reflection to convert empty strings and zeros to null
-            CleanupObjectProperties(order);
-
-            // Clean up customer data
-            if (order.Customer != null) CleanupObjectProperties(order.Customer);
-            if (order.Payer != null) CleanupObjectProperties(order.Payer);
-            if (order.Driver != null) CleanupObjectProperties(order.Driver);
-
-            // Clean up invoice data
-            foreach (var invoice in order.Invoices)
-            {
-                CleanupObjectProperties(invoice);
-                
-                // Clean up Fortnox logs
-                foreach (var log in invoice.FortnoxLogs)
-                {
-                    CleanupObjectProperties(log);
-                }
-            }
-        }
-    }
-
-    private void CleanupObjectProperties(object obj)
-    {
-        if (obj == null) return;
-
-        var properties = obj.GetType().GetProperties();
-        foreach (var property in properties)
-        {
-            if (!property.CanWrite) continue;
-
-            var value = property.GetValue(obj);
-            if (value == null) continue;
-
-            // Convert empty strings to null
-            if (value is string str && string.IsNullOrEmpty(str))
-            {
-                property.SetValue(obj, null);
-            }
-            // Convert zeros to null for numeric types
-            else if (value is int intVal && intVal == 0)
-            {
-                property.SetValue(obj, null);
-            }
-            else if (value is double doubleVal && doubleVal == 0.0)
-            {
-                property.SetValue(obj, null);
-            }
-            else if (value is decimal decimalVal && decimalVal == 0m)
-            {
-                property.SetValue(obj, null);
-            }
-            else if (value is float floatVal && floatVal == 0.0f)
-            {
-                property.SetValue(obj, null);
-            }
-            else if (value is short shortVal && shortVal == 0)
-            {
-                property.SetValue(obj, null);
-            }
-        }
-    }
+    // Removed reflection-based cleanup methods for performance
 
 }

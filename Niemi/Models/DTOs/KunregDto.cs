@@ -17,7 +17,10 @@ public class KunregDto
     // Calculated/parsed fields
     public string? FirstName { get; set; }              // Extracted first name from KUN_NAMN (after comma)
     public string? LastName { get; set; }               // Extracted last name from KUN_NAMN (before comma)
+    public string? CompanyName { get; set; }             // Company name for company customers
     public string? ZipCode { get; set; }                // Extracted zip code from KUN_PADR (numbers only)
     public string? City { get; set; }                   // Extracted city from KUN_PADR (letters only)
     public string? MobilePhone { get; set; }            // First mobile phone number found, formatted as +467##
+    public string? CustomerType { get; set; }           // "Company" or "Private" based on KUN_ORGN format
+    public DateTime? BirthDate { get; set; }            // Extracted birthdate from KUN_ORGN for private persons (yyMMdd-#### format)
 }

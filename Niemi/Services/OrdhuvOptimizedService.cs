@@ -1,264 +1,364 @@
 using FirebirdSql.Data.FirebirdClient;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Niemi.Models.DTOs;
+using Niemi.Services;
 
 namespace Niemi.Services;
 
     public class OrdhuvOptimizedService : IOrdhuvOptimizedService
     {
-        private readonly string _connectionString;
         private readonly ILogger<OrdhuvOptimizedService> _logger;
+    private readonly IDatabaseConfigService _databaseConfig;
 
-        public OrdhuvOptimizedService(IConfiguration configuration, ILogger<OrdhuvOptimizedService> logger)
+    public OrdhuvOptimizedService(ILogger<OrdhuvOptimizedService> logger, IDatabaseConfigService databaseConfig)
         {
-            _connectionString = configuration.GetConnectionString("FirebirdConnection") 
-                ?? throw new ArgumentNullException("FirebirdConnection string is missing");
             _logger = logger;
+        _databaseConfig = databaseConfig;
+    }
+
+    // Static keyword categories data for matching
+    // NOTE: Short keywords (AC, MV, MOK) have leading spaces to prevent false positives
+    private static readonly List<KeywordCategoryDto> KeywordCategories = new()
+    {
+        new KeywordCategoryDto
+        {
+            Category = "Reparation",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 0, Keyword = "REPARATION" },
+                new() { Id = 34, Keyword = "KALIBRERING" }
+            }
+        },
+        new KeywordCategoryDto
+        {
+            Category = "Felsökning",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 1, Keyword = "DIAGNOS" },
+                new() { Id = 2, Keyword = "FELKOD" },
+                new() { Id = 3, Keyword = "AVLÄS" },
+                new() { Id = 4, Keyword = "FELSÖK" },
+                new() { Id = 5, Keyword = "MOTORLA" },
+                new() { Id = 6, Keyword = "UNDERSÖK" },
+                new() { Id = 7, Keyword = "USK" }
+            }
+        },
+        new KeywordCategoryDto
+        {
+            Category = "AC",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 8, Keyword = " AC" }, // Leading space required - AC is too common without it
+                new() { Id = 9, Keyword = "KONDENSOR" },
+                new() { Id = 10, Keyword = "KYLER" },
+                new() { Id = 11, Keyword = "KOMPRESSOR" }
+            }
+        },
+        new KeywordCategoryDto
+        {
+            Category = "Service",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 12, Keyword = "SERVICE" },
+                new() { Id = 13, Keyword = "MÅNAD" }
+            }
+        },
+        new KeywordCategoryDto
+        {
+            Category = "Tillbehör",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 14, Keyword = "DRAG" },
+                new() { Id = 15, Keyword = "EXTRALJUS" },
+                new() { Id = 16, Keyword = "LEDRAMP" },
+                new() { Id = 17, Keyword = "LED-RAMP" },
+                new() { Id = 18, Keyword = " MV" }, // Leading space required - MV is too common without it
+                new() { Id = 19, Keyword = "KUPEV" },
+                new() { Id = 20, Keyword = " MOK" }, // Leading space required - MOK is too common without it
+                new() { Id = 21, Keyword = "MOTORVÄRMARE" },
+                new() { Id = 22, Keyword = "KUPÉVÄRMARE" }
+            }
+        },
+        new KeywordCategoryDto
+        {
+            Category = "Bromsar",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 23, Keyword = "BROMS" },
+                new() { Id = 24, Keyword = "KLOSSAR" },
+                new() { Id = 25, Keyword = "SKIVOR" }
+            }
+        },
+        new KeywordCategoryDto
+        {
+            Category = "Däck",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 26, Keyword = "DÄCK" },
+                new() { Id = 27, Keyword = "HJULINSTÄLLNING" },
+                new() { Id = 28, Keyword = "HJULSMATNING" },
+                new() { Id = 29, Keyword = "HJULSKIFT" },
+                new() { Id = 30, Keyword = "TPMS" },
+                new() { Id = 31, Keyword = "PUNK" },
+                new() { Id = 32, Keyword = "BALANS" }
+            }
+        },
+        new KeywordCategoryDto
+        {
+            Category = "CTC",
+            Entries = new List<KeywordEntryDto>
+            {
+                new() { Id = 33, Keyword = "CTC" }
+            }
         }
+    };
 
         /// <summary>
-        /// Splits customer name into first name and last name
-        /// Requires: comma followed by exactly one space, and first name must be a single word
-        /// Examples: "Andersson, Erik" -> lastName: "Andersson", firstName: "Erik"
-        ///           "JOHANSSON, ANNA" -> lastName: "Johansson", firstName: "Anna"
-        ///           "Andersson,  Erik" -> lastName: null, firstName: null (multiple spaces - invalid)
-        ///           "ABU, MAXWELL KWAME" -> lastName: null, firstName: null (first name has spaces - invalid)
-        ///           "Erik Andersson" -> lastName: null, firstName: null (no comma)
+    /// Matches keywords in the provided text and returns the first match
         /// </summary>
-        private static (string? lastName, string? firstName) SplitCustomerName(string? customerName)
+    private static (string? keyword, string? category) MatchKeywords(string? text)
         {
-            if (string.IsNullOrWhiteSpace(customerName))
+        if (string.IsNullOrEmpty(text))
                 return (null, null);
 
-            var normalized = customerName.Trim();
-            
-            // Look for pattern: "LastName, FirstName" (comma followed by exactly one space)
-            var commaIndex = normalized.IndexOf(',');
-            if (commaIndex == -1)
+        var upperText = text.ToUpperInvariant();
+
+        foreach (var category in KeywordCategories)
+        {
+            foreach (var entry in category.Entries)
             {
-                // No comma found
-                return (null, null);
+                if (upperText.Contains(entry.Keyword))
+                {
+                    return (entry.Keyword, category.Category);
+                }
             }
-
-            // Check if there's exactly one space after the comma
-            if (commaIndex + 2 >= normalized.Length || normalized[commaIndex + 1] != ' ')
-            {
-                // No space or more than one space after comma
-                return (null, null);
-            }
-
-            // Check if there's a second space (which would make it invalid)
-            if (commaIndex + 3 < normalized.Length && normalized[commaIndex + 2] == ' ')
-            {
-                // More than one space after comma
-                return (null, null);
-            }
-
-            // Extract last name (before comma) and first name (after comma and single space)
-            var lastName = normalized.Substring(0, commaIndex).Trim();
-            var firstName = normalized.Substring(commaIndex + 2).Trim(); // Skip comma and single space
-
-            // Check that first name doesn't contain any spaces (should be single word)
-            if (firstName.Contains(' '))
-            {
-                // First name contains spaces, which is invalid
-                return (null, null);
-            }
-
-            // Apply proper capitalization (Title Case)
-            lastName = ToTitleCase(lastName);
-            firstName = ToTitleCase(firstName);
-
-            return (string.IsNullOrEmpty(lastName) ? null : lastName,
-                    string.IsNullOrEmpty(firstName) ? null : firstName);
         }
 
-        /// <summary>
-        /// Converts string to Title Case (first letter uppercase, rest lowercase)
-        /// </summary>
-        private static string ToTitleCase(string? input)
-        {
-            if (string.IsNullOrWhiteSpace(input) || input.Length == 0)
-                return string.Empty;
+                return (null, null);
+            }
 
-            return char.ToUpper(input[0]) + input.Substring(1).ToLower();
+    private static (string? customerType, DateTime? birthDate) ParseCustomerInfo(string? kunOrgn)
+    {
+        if (string.IsNullOrEmpty(kunOrgn))
+            {
+                return (null, null);
+            }
+
+        // Check if it matches the Swedish personal number format: yyMMdd-####
+        // This pattern indicates a private person
+        if (System.Text.RegularExpressions.Regex.IsMatch(kunOrgn, @"^\d{6}-\d{4}$"))
+        {
+            try
+            {
+                // Extract the date part (yyMMdd)
+                var datePart = kunOrgn.Substring(0, 6);
+                var year = int.Parse(datePart.Substring(0, 2));
+                var month = int.Parse(datePart.Substring(2, 2));
+                var day = int.Parse(datePart.Substring(4, 2));
+
+                // Convert 2-digit year to 4-digit year using dynamic logic
+                // Based on current year and reasonable age assumptions for car owners (max 99 years old)
+                var currentYear = DateTime.Now.Year;
+                var currentCentury = (currentYear / 100) * 100;
+                var previousCentury = currentCentury - 100;
+                
+                // Calculate possible birth years
+                var possibleYearCurrent = currentCentury + year;
+                var possibleYearPrevious = previousCentury + year;
+                
+                // Determine which year makes more sense based on age constraints
+                var ageCurrent = currentYear - possibleYearCurrent;
+                var agePrevious = currentYear - possibleYearPrevious;
+                
+                // Choose the year that results in a reasonable age (0-99 years old)
+                var fullYear = (ageCurrent >= 0 && ageCurrent <= 99) ? possibleYearCurrent : possibleYearPrevious;
+                
+                // Additional validation: ensure the chosen year results in a reasonable age
+                var finalAge = currentYear - fullYear;
+                if (finalAge < 0 || finalAge > 99)
+                {
+                    // If neither year results in a reasonable age, treat as company
+                    return ("Company", null);
+                }
+
+                // Validate the date
+                if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+                {
+                    var birthDate = new DateTime(fullYear, month, day);
+                    return ("Private", birthDate);
+                }
+            }
+            catch
+            {
+                // If parsing fails, treat as company
+            }
         }
 
-        /// <summary>
-        /// Finds the first mobile phone number from the provided phone numbers and formats it as +467##
-        /// Logic: Clean spaces and "-", strip leading 0/+/46, if starts with 7 then add +46
-        /// Examples: 
-        /// - "+46706670431" -> "+46706670431" (already correct)
-        /// - "0707799545" -> "+46707799545"
-        /// - "4670 559 68 47" -> "+46705596847"
-        /// - "070-383 35 67" -> "+46703833567"
-        /// - "070 668 73 87" -> "+46706687387"
-        /// - "0920-230088" -> null (not mobile - doesn't start with 7)
-        /// - "461121-9231" -> null (not mobile - doesn't start with 7)
-        /// </summary>
-        private static string? FindAndFormatMobilePhone(string? tel1, string? tel2, string? tel3)
+        // If it doesn't match the personal number format, treat as company
+        return ("Company", null);
+    }
+
+    private static string GetCustomerTypeFilter(string customerType)
+    {
+        return customerType?.ToLower() switch
         {
-            var phoneNumbers = new[] { tel1, tel2, tel3 };
+            "private" => "AND c.KUN_ORGN SIMILAR TO '[0-9]{6}-[0-9]{4}'",
+            "company" => "AND (c.KUN_ORGN IS NULL OR c.KUN_ORGN NOT SIMILAR TO '[0-9]{6}-[0-9]{4}')",
+            _ => ""
+        };
+    }
+
+    private static string? ProcessPhoneNumbers(string? tel1, string? tel2, string? tel3)
+    {
+        var phoneNumbers = new[] { tel1, tel2, tel3 }.Where(p => !string.IsNullOrEmpty(p)).ToArray();
             
             foreach (var phone in phoneNumbers)
             {
-                if (string.IsNullOrWhiteSpace(phone))
-                    continue;
-                    
-                var formatted = FormatMobilePhone(phone);
-                if (formatted != null)
-                    return formatted;
+            // Clean the phone number
+            var cleanPhone = System.Text.RegularExpressions.Regex.Replace(phone ?? "", @"[^\d]", "");
+            
+            // Check if it's a Swedish mobile number (starts with 07)
+            if (cleanPhone.StartsWith("07") && cleanPhone.Length >= 9)
+            {
+                // Format as +467xxxxxxxx
+                return "+46" + cleanPhone.Substring(1);
+            }
             }
             
             return null;
         }
 
-        /// <summary>
-        /// Formats a phone number if it's a Swedish mobile number, otherwise returns null
-        /// </summary>
-        private static string? FormatMobilePhone(string? phoneNumber)
-        {
-            if (string.IsNullOrWhiteSpace(phoneNumber))
-                return null;
+    private static (string firstName, string lastName, string companyName) ParseName(string? kunNamn, string? customerType)
+    {
+        if (string.IsNullOrEmpty(kunNamn))
+            return (string.Empty, string.Empty, string.Empty);
 
-            // Step 1: Clean spaces and "-"
-            var cleaned = phoneNumber.Replace(" ", "").Replace("-", "");
-            
-            // Step 2: Strip leading 0, +, 46
-            while (cleaned.StartsWith("0") || cleaned.StartsWith("+") || cleaned.StartsWith("46"))
-            {
-                if (cleaned.StartsWith("0"))
-                    cleaned = cleaned.Substring(1);
-                else if (cleaned.StartsWith("+"))
-                    cleaned = cleaned.Substring(1);
-                else if (cleaned.StartsWith("46"))
-                    cleaned = cleaned.Substring(2);
-            }
-            
-            // Step 3: If it starts with 7, it's a mobile
-            if (cleaned.StartsWith("7"))
-            {
-                // Step 4: Add +46
-                return "+46" + cleaned;
-            }
-            
-            // Not a mobile number
-            return null;
+        // For companies, treat the entire name as company name (no capitalization)
+        if (customerType == "Company")
+        {
+            return (string.Empty, string.Empty, kunNamn.Trim());
         }
 
-        /// <summary>
-        /// Splits postal address into zip code and city
-        /// Examples: "97346  LULEÅ" -> zip: "97346", city: "LULEÅ"
-        ///           "945 33 ROSVIK" -> zip: "94533", city: "ROSVIK"
-        /// </summary>
-        private static (string? zipCode, string? city) SplitPostalAddress(string? postalAddress)
+        // For private persons, look for comma to separate last name and first name
+        var commaIndex = kunNamn.IndexOf(',');
+        if (commaIndex > 0)
         {
-            if (string.IsNullOrWhiteSpace(postalAddress))
+            var lastName = kunNamn.Substring(0, commaIndex).Trim();
+            var firstName = kunNamn.Substring(commaIndex + 1).Trim();
+            return (CapitalizeName(firstName), CapitalizeName(lastName), string.Empty);
+        }
+
+        // If no comma, treat the whole thing as last name
+        return (string.Empty, CapitalizeName(kunNamn.Trim()), string.Empty);
+    }
+
+    private static string CapitalizeName(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return string.Empty;
+
+        // Split by spaces and capitalize each word
+        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var capitalizedWords = words.Select(word => 
+        {
+            if (string.IsNullOrEmpty(word))
+                return word;
+            
+            // Capitalize first letter, lowercase the rest
+            return char.ToUpper(word[0]) + word.Substring(1).ToLower();
+        });
+
+        return string.Join(" ", capitalizedWords);
+    }
+
+    private static (string? zipCode, string? city) ParsePostalAddress(string? kunPadr)
+    {
+        if (string.IsNullOrEmpty(kunPadr))
                 return (null, null);
 
-            // Remove extra whitespace and normalize
-            var normalized = postalAddress.Trim();
-            
-            // Find the first sequence of letters (city starts here)
-            var cityStartIndex = -1;
-            for (int i = 0; i < normalized.Length; i++)
-            {
-                if (char.IsLetter(normalized[i]))
-                {
-                    cityStartIndex = i;
-                    break;
-                }
-            }
+        // Extract zip code (numbers at the beginning)
+        var zipMatch = System.Text.RegularExpressions.Regex.Match(kunPadr, @"^(\d{3}\s?\d{2})");
+        var zipCode = zipMatch.Success ? zipMatch.Groups[1].Value.Trim() : null;
 
-            if (cityStartIndex == -1)
-            {
-                // No letters found, might be just numbers - strip all spaces for consistency
-                var zipCodeOnly = normalized.Replace(" ", "");
-                return (string.IsNullOrEmpty(zipCodeOnly) ? null : zipCodeOnly, null);
-            }
+        // Extract city (everything after the zip code)
+        var city = zipMatch.Success 
+            ? kunPadr.Substring(zipMatch.Length).Trim()
+            : kunPadr.Trim();
 
-            // Extract zip code (everything before the first letter) and strip all spaces
-            var zipCode = normalized.Substring(0, cityStartIndex).Replace(" ", "");
-            
-            // Extract city (everything from the first letter onwards)
-            var city = normalized.Substring(cityStartIndex).Trim();
+        return (zipCode, string.IsNullOrEmpty(city) ? null : city);
+    }
 
-            // Return null for empty strings
-            return (string.IsNullOrEmpty(zipCode) ? null : zipCode,
-                    string.IsNullOrEmpty(city) ? null : city);
-        }
-
-        /// <summary>
-        /// Creates a BilregDto from the data reader
-        /// </summary>
-        private static BilregDto CreateBilregDto(System.Data.Common.DbDataReader reader, int bilRenrIndex)
-        {
-            return new BilregDto
-            {
-                BilBetekning = reader.IsDBNull(bilRenrIndex + 1) ? null : reader.GetString(bilRenrIndex + 1), // BIL_BETECKNING
-                BilArsm = reader.IsDBNull(bilRenrIndex + 2) ? null : reader.GetInt16(bilRenrIndex + 2), // BIL_ARSM
-                Fabrikat = reader.IsDBNull(bilRenrIndex + 3) ? null : reader.GetString(bilRenrIndex + 3), // FABRIKAT
-                BilVehiclecat = reader.IsDBNull(bilRenrIndex + 4) ? null : reader.GetString(bilRenrIndex + 4), // BIL_VEHICLECAT
-                BilFuel = reader.IsDBNull(bilRenrIndex + 5) ? null : reader.GetString(bilRenrIndex + 5) // BIL_FUEL
-            };
-        }
-
-        /// <summary>
-        /// Creates a KunregDto from the data reader with postal address, name splitting, and mobile phone detection
-        /// </summary>
-        private static KunregDto CreateKunregDto(System.Data.Common.DbDataReader reader, int kunKunrIndex, int kunPadrIndex)
-        {
-            var kunNamn = reader.IsDBNull(kunKunrIndex + 1) ? null : reader.GetString(kunKunrIndex + 1);
-            var kunAdr1 = reader.IsDBNull(kunKunrIndex + 2) ? null : reader.GetString(kunKunrIndex + 2);
-            var kunAdr2 = reader.IsDBNull(kunKunrIndex + 3) ? null : reader.GetString(kunKunrIndex + 3);
-            var kunPadr = reader.IsDBNull(kunPadrIndex) ? null : reader.GetString(kunPadrIndex);
-            var kunOrgn = reader.IsDBNull(kunKunrIndex + 5) ? null : reader.GetString(kunKunrIndex + 5);
-            var kunTel1 = reader.IsDBNull(kunKunrIndex + 6) ? null : reader.GetString(kunKunrIndex + 6);
-            var kunTel2 = reader.IsDBNull(kunKunrIndex + 7) ? null : reader.GetString(kunKunrIndex + 7);
-            var kunTel3 = reader.IsDBNull(kunKunrIndex + 8) ? null : reader.GetString(kunKunrIndex + 8);
-            var kunEpostadress = reader.IsDBNull(kunKunrIndex + 9) ? null : reader.GetString(kunKunrIndex + 9);
-            
-            var (lastName, firstName) = SplitCustomerName(kunNamn);
-            var (zipCode, city) = SplitPostalAddress(kunPadr);
-            var mobilePhone = FindAndFormatMobilePhone(kunTel1, kunTel2, kunTel3);
-            
-            return new KunregDto
-            {
-                // Original database fields
-                KunKunr = reader.IsDBNull(kunKunrIndex) ? 0 : 
-                         (int.TryParse(reader.GetString(kunKunrIndex), out var kunKunrValue) ? kunKunrValue : 0),
-                KunNamn = kunNamn,
-                KunAdr1 = kunAdr1,
-                KunAdr2 = kunAdr2,
-                KunPadr = kunPadr,
-                KunOrgn = kunOrgn,
-                KunTel1 = kunTel1,
-                KunTel2 = kunTel2,
-                KunTel3 = kunTel3,
-                KunEpostadress = kunEpostadress,
-                
-                // Calculated/parsed fields
-                FirstName = firstName,
-                LastName = lastName,
-                ZipCode = zipCode,
-                City = city,
-                MobilePhone = mobilePhone
-            };
-        }
-
-    public async Task<IEnumerable<OrdhuvDto>> GetOrdersWithInvoicesByDateAsync(DateTime fromDate, DateTime toDate)
+    public async Task<IEnumerable<OrdhuvDto>> GetOrdersWithInvoicesByDateAsync(DateTime fromDate, DateTime toDate, string? environment = null, string[]? environments = null, string? orhStat = null, string? customerType = null)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        var allResults = new List<OrdhuvDto>();
+
+        try
+        {
+            // Determine which environments to query
+            var targetEnvironments = GetTargetEnvironments(environment, environments);
+            
+            _logger.LogInformation("Querying {EnvironmentCount} environments: {Environments}", 
+                targetEnvironments.Length, string.Join(", ", targetEnvironments));
+
+            // Query all environments in parallel
+            var tasks = targetEnvironments.Select(env => QueryEnvironmentAsync(env, fromDate, toDate, orhStat, customerType));
+            var environmentResults = await Task.WhenAll(tasks);
+            
+            // Combine all results (no deduplication as requested)
+            foreach (var envResults in environmentResults)
+            {
+                allResults.AddRange(envResults);
+            }
+            
+            sw.Stop();
+            _logger.LogInformation("Query completed in {ElapsedMs}ms. Found {Count} orders from {EnvironmentCount} environments", 
+                sw.ElapsedMilliseconds, allResults.Count, targetEnvironments.Length);
+
+            return allResults;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger.LogError(ex, "Query failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            throw;
+        }
+        }
+
+        /// <summary>
+    /// Determines which environments to query based on parameters
+        /// </summary>
+    private string[] GetTargetEnvironments(string? environment, string[]? environments)
+    {
+        // If specific environment is requested, use only that
+        if (!string.IsNullOrEmpty(environment))
+        {
+            return new[] { environment };
+        }
+        
+        // If specific environments are requested, use those
+        if (environments != null && environments.Length > 0)
+        {
+            return environments;
+        }
+        
+        // Default: query all available environments
+        return _databaseConfig.GetAvailableEnvironments();
+        }
+
+        /// <summary>
+    /// Queries a single environment for orders with invoices
+        /// </summary>
+    private async Task<List<OrdhuvDto>> QueryEnvironmentAsync(string environment, DateTime fromDate, DateTime toDate, string? orhStat = null, string? customerType = null)
+    {
         var results = new List<OrdhuvDto>();
 
         try
         {
-            using var connection = new FbConnection(_connectionString);
+            using var connection = new FbConnection(_databaseConfig.GetConnectionString(environment));
             await connection.OpenAsync();
             
             // Step 1: Get orders that have invoices in the date range with customer data
-            // Only select meaningful columns and use conditional logic to avoid fetching zeros
             var sqlQuery = $@"
                 SELECT DISTINCT
                     o.ORH_DOKN,
@@ -325,15 +425,17 @@ namespace Niemi.Services;
                   AND f.TIME_STAMP <= @toDate
                   AND f.KEY_NO IS NOT NULL 
                   AND f.KEY_NO != ''
+                  {(!string.IsNullOrEmpty(orhStat) ? "AND o.ORH_STAT = @orhStat" : "")}
+                  {(!string.IsNullOrEmpty(customerType) ? GetCustomerTypeFilter(customerType) : "")}
                 ORDER BY o.ORH_DOKD DESC, o.ORH_DOKN DESC";
                 
             using var orderCommand = new FbCommand(sqlQuery, connection);
-
             orderCommand.Parameters.AddWithValue("@fromDate", fromDate);
             orderCommand.Parameters.AddWithValue("@toDate", toDate);
-                
-            _logger.LogInformation("Executing optimized orders with invoices query with fromDate: {FromDate}, toDate: {ToDate}", 
-                fromDate, toDate);
+            if (!string.IsNullOrEmpty(orhStat))
+            {
+                orderCommand.Parameters.AddWithValue("@orhStat", orhStat);
+            }
 
             // Get all distinct orders
             using var orderReader = await orderCommand.ExecuteReaderAsync();
@@ -343,6 +445,7 @@ namespace Niemi.Services;
             {
                 var order = new OrdhuvDto
                 {
+                    Database = environment, // Add database identifier
                     OrhDokn = orderReader.GetInt32(0),                    // ORH_DOKN - Order Number
                     OrhKunr = orderReader.GetInt32(1),                    // ORH_KUNR - Customer Number
                     OrhDokd = orderReader.IsDBNull(2) ? null : orderReader.GetDateTime(2), // ORH_DOKD - Order Date
@@ -357,6 +460,7 @@ namespace Niemi.Services;
                     OrhBetkunr = orderReader.IsDBNull(11) ? null : orderReader.GetInt32(11), // ORH_BETKUNR - Payer Number
                     OrhDriverNo = orderReader.IsDBNull(12) ? null : orderReader.GetInt32(12), // ORH_DRIVER_NO - Driver Number
                     Invoices = new List<InvoiceIndividualDto>(),
+                    OrderRows = new List<OrdrRadDto>(),
                     
                     // Customer data (ORH_KUNR)
                     Customer = orderReader.IsDBNull(13) ? null : CreateKunregDto(orderReader, 13, 17),
@@ -375,8 +479,7 @@ namespace Niemi.Services;
                 orderNumbers.Add(order.OrhDokn);
             }
             
-            _logger.LogInformation("Found {OrderCount} unique orders: {OrderNumbers}", orderNumbers.Count, string.Join(", ", orderNumbers.Take(10)));
-            orderReader.Close();
+            _logger.LogDebug("Found {OrderCount} orders in {Environment}", orderNumbers.Count, environment);
 
             // Step 2: Get all invoices for these orders - only meaningful fields
             if (orderNumbers.Any())
@@ -430,57 +533,45 @@ namespace Niemi.Services;
                 invoiceCommand.Parameters.AddWithValue("@fromDate", fromDate);
                 invoiceCommand.Parameters.AddWithValue("@toDate", toDate);
 
-                _logger.LogInformation("Executing optimized invoices query for {OrderCount} orders", orderNumbers.Count);
-
                 using var invoiceReader = await invoiceCommand.ExecuteReaderAsync();
                 var invoiceCount = 0;
                 var invoiceData = new Dictionary<int, InvoiceIndividualDto>();
                 
                 while (await invoiceReader.ReadAsync())
                 {
+                    var currentInvoiceNo = invoiceReader.GetInt32(25); // INVOICE_NO
                     invoiceCount++;
-                    var currentInvoiceNo = invoiceReader.GetInt32(25); // INVOICE_NO is at index 25
                     
-                    // Create or get existing invoice
                     if (!invoiceData.ContainsKey(currentInvoiceNo))
                     {
                         invoiceData[currentInvoiceNo] = new InvoiceIndividualDto
                         {
-                            // Vehicle information
-                            VehicleNo = invoiceReader.IsDBNull(0) ? null : invoiceReader.GetString(0),           // VEHICLE_NO
-                            Manufacturer = invoiceReader.IsDBNull(1) ? null : invoiceReader.GetString(1),       // MANUFACTURER
-                            Model = invoiceReader.IsDBNull(2) ? null : invoiceReader.GetString(2),              // MODEL
-                            Vin = invoiceReader.IsDBNull(3) ? null : invoiceReader.GetString(3),                // VIN
+                            VehicleNo = invoiceReader.IsDBNull(0) ? null : invoiceReader.GetString(0), // VEHICLE_NO
+                            Manufacturer = invoiceReader.IsDBNull(1) ? null : invoiceReader.GetString(1), // MANUFACTURER
+                            Model = invoiceReader.IsDBNull(2) ? null : invoiceReader.GetString(2), // MODEL
+                            Vin = invoiceReader.IsDBNull(3) ? null : invoiceReader.GetString(3), // VIN
                             RegistrationDate = invoiceReader.IsDBNull(4) ? null : invoiceReader.GetDateTime(4), // REGISTRATION_DATE
-                            ModelYear = invoiceReader.IsDBNull(5) ? null : invoiceReader.GetInt16(5),          // MODEL_YEAR
-                            
-                            // Owner Information
-                            OwnerNo = invoiceReader.IsDBNull(6) ? null : invoiceReader.GetInt32(6),             // OWNER_NO
-                            OwnerName = invoiceReader.IsDBNull(7) ? null : invoiceReader.GetString(7),         // OWNER_NAME
-                            OwnerAddress2 = invoiceReader.IsDBNull(8) ? null : invoiceReader.GetString(8),     // OWNER_ADRESS_2
-                            OwnerZipAndCity = invoiceReader.IsDBNull(9) ? null : invoiceReader.GetString(9),   // OWNER_ZIP_AND_CITY
-                            OwnerPhone = invoiceReader.IsDBNull(10) ? null : invoiceReader.GetString(10),      // OWNER_PHONE
-                            OwnerMail = invoiceReader.IsDBNull(11) ? null : invoiceReader.GetString(11),       // OWNER_MAIL
-                            
-                            // Payer Information
-                            PayerNo = invoiceReader.IsDBNull(12) ? null : invoiceReader.GetInt32(12),          // PAYER_NO
-                            PayerName = invoiceReader.IsDBNull(13) ? null : invoiceReader.GetString(13),       // PAYER_NAME
-                            PayerAddress2 = invoiceReader.IsDBNull(14) ? null : invoiceReader.GetString(14),   // PAYER_ADRESS_2
+                            ModelYear = invoiceReader.IsDBNull(5) ? null : (short)invoiceReader.GetInt32(5), // MODEL_YEAR
+                            OwnerNo = invoiceReader.IsDBNull(6) ? null : invoiceReader.GetInt32(6), // OWNER_NO
+                            OwnerName = invoiceReader.IsDBNull(7) ? null : invoiceReader.GetString(7), // OWNER_NAME
+                            OwnerAddress2 = invoiceReader.IsDBNull(8) ? null : invoiceReader.GetString(8), // OWNER_ADRESS_2
+                            OwnerZipAndCity = invoiceReader.IsDBNull(9) ? null : invoiceReader.GetString(9), // OWNER_ZIP_AND_CITY
+                            OwnerPhone = invoiceReader.IsDBNull(10) ? null : invoiceReader.GetString(10), // OWNER_PHONE
+                            OwnerMail = invoiceReader.IsDBNull(11) ? null : invoiceReader.GetString(11), // OWNER_MAIL
+                            PayerNo = invoiceReader.IsDBNull(12) ? null : invoiceReader.GetInt32(12), // PAYER_NO
+                            PayerName = invoiceReader.IsDBNull(13) ? null : invoiceReader.GetString(13), // PAYER_NAME
+                            PayerAddress2 = invoiceReader.IsDBNull(14) ? null : invoiceReader.GetString(14), // PAYER_ADRESS_2
                             PayerZipAndCity = invoiceReader.IsDBNull(15) ? null : invoiceReader.GetString(15), // PAYER_ZIP_AND_CITY
-                            PayerPhone = invoiceReader.IsDBNull(16) ? null : invoiceReader.GetString(16),      // PAYER_PHONE
-                            PayerMail = invoiceReader.IsDBNull(17) ? null : invoiceReader.GetString(17),       // PAYER_MAIL
-                            PayerVatNo = invoiceReader.IsDBNull(18) ? null : invoiceReader.GetString(18),      // PAYER_VATNO
-                            
-                            // Driver Information
-                            DriverNo = invoiceReader.IsDBNull(19) ? null : invoiceReader.GetInt32(19),         // DRIVER_NO
-                            DriverName = invoiceReader.IsDBNull(20) ? null : invoiceReader.GetString(20),      // DRIVER_NAME
-                            DriverAddress2 = invoiceReader.IsDBNull(21) ? null : invoiceReader.GetString(21),  // DRIVER_ADRESS_2
+                            PayerPhone = invoiceReader.IsDBNull(16) ? null : invoiceReader.GetString(16), // PAYER_PHONE
+                            PayerMail = invoiceReader.IsDBNull(17) ? null : invoiceReader.GetString(17), // PAYER_MAIL
+                            PayerVatNo = invoiceReader.IsDBNull(18) ? null : invoiceReader.GetString(18), // PAYER_VATNO
+                            DriverNo = invoiceReader.IsDBNull(19) ? null : invoiceReader.GetInt32(19), // DRIVER_NO
+                            DriverName = invoiceReader.IsDBNull(20) ? null : invoiceReader.GetString(20), // DRIVER_NAME
+                            DriverAddress2 = invoiceReader.IsDBNull(21) ? null : invoiceReader.GetString(21), // DRIVER_ADRESS_2
                             DriverZipAndCity = invoiceReader.IsDBNull(22) ? null : invoiceReader.GetString(22), // DRIVER_ZIP_AND_CITY
-                            DriverPhone = invoiceReader.IsDBNull(23) ? null : invoiceReader.GetString(23),     // DRIVER_PHONE
-                            DriverMail = invoiceReader.IsDBNull(24) ? null : invoiceReader.GetString(24),      // DRIVER_MAIL
-                            
-                            // Invoice Information
-                            InvoiceNo = currentInvoiceNo,                                                     // INVOICE_NO
+                            DriverPhone = invoiceReader.IsDBNull(23) ? null : invoiceReader.GetString(23), // DRIVER_PHONE
+                            DriverMail = invoiceReader.IsDBNull(24) ? null : invoiceReader.GetString(24), // DRIVER_MAIL
+                            InvoiceNo = currentInvoiceNo,
                             
                             // Initialize Fortnox Logs array
                             FortnoxLogs = new List<FortnoxLogDto>()
@@ -503,7 +594,7 @@ namespace Niemi.Services;
                     invoiceData[currentInvoiceNo].FortnoxLogs.Add(fortnoxLog);
                 }
                 
-                // Add invoices to their corresponding orders and calculate timestamps
+                // Add invoices to their corresponding orders
                 foreach (var invoice in invoiceData.Values)
                 {
                     var order = results.FirstOrDefault(o => o.OrhDokn == invoice.InvoiceNo);
@@ -518,45 +609,198 @@ namespace Niemi.Services;
                         }
                         
                         order.Invoices.Add(invoice);
-                        _logger.LogInformation("Added invoice {InvoiceNo} with {LogCount} Fortnox logs to order {OrderNo}", 
-                            invoice.InvoiceNo, invoice.FortnoxLogs.Count, order.OrhDokn);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Could not find order for invoice {InvoiceNo}", invoice.InvoiceNo);
                     }
                 }
                 
-                // Calculate min and max timestamps for each order across all invoices
+                _logger.LogDebug("Found {InvoiceCount} invoices for {OrderCount} orders in {Environment}", 
+                    invoiceCount, orderNumbers.Count, environment);
+            }
+            
+            // Step 3: Get ORDRAD data for all orders in a single query
+            if (orderNumbers.Any())
+            {
+                try
+                {
+                    // Process ORDRAD data
+                    var ordrRadData = new Dictionary<int, List<OrdrRadDto>>();
+                    
+                    try
+                    {
+                        using var ordrRadCommand = new FbCommand($@"
+                            SELECT 
+                                ORD_DOKN,
+                                ORD_RADNR,
+                                ORD_ARTN,
+                                CAST(ORD_ARTB AS VARCHAR(1000) CHARACTER SET UTF8) as ORD_ARTB,
+                                ORD_ANTA,
+                                ORD_INPRIS,
+                                ORD_RABA,
+                                ORD_MOMS,
+                                ORD_TYP,
+                                ORD_KOD,
+                                ORD_SUMMAEXKL,
+                                ORD_CREATED_AT,
+                                ORD_UPDATED_AT
+                            FROM ORDRAD 
+                            WHERE ORD_DOKN IN ({string.Join(",", orderNumbers.Select((_, i) => $"@ordDokn{i}"))})
+                            ORDER BY ORD_DOKN, ORD_RADNR", connection);
+
+                        // Add parameters for each order number
+                        for (int i = 0; i < orderNumbers.Count; i++)
+                        {
+                            ordrRadCommand.Parameters.AddWithValue($"@ordDokn{i}", orderNumbers[i]);
+                        }
+
+                        using var ordrRadReader = await ordrRadCommand.ExecuteReaderAsync();
+                        
+                        while (await ordrRadReader.ReadAsync())
+                        {
+                            var rowOrderNo = ordrRadReader.GetInt32(0); // ORD_DOKN
+                            var artbText = ordrRadReader.IsDBNull(3) ? null : ordrRadReader.GetString(3); // ORD_ARTB
+                            var (matchedKeyword, matchedCategory) = MatchKeywords(artbText);
+                            
+                            if (!ordrRadData.ContainsKey(rowOrderNo))
+                            {
+                                ordrRadData[rowOrderNo] = new List<OrdrRadDto>();
+                            }
+                            
+                            var ordrRad = new OrdrRadDto
+                            {
+                                OrdDokn = rowOrderNo,                                           // ORD_DOKN
+                                OrdRadnr = ordrRadReader.IsDBNull(1) ? 0 : (int)ordrRadReader.GetDouble(1), // ORD_RADNR
+                                OrdArtn = ordrRadReader.IsDBNull(2) ? null : ordrRadReader.GetString(2), // ORD_ARTN
+                                OrdArtb = artbText, // ORD_ARTB
+                                OrdAnta = ordrRadReader.IsDBNull(4) ? 0 : ordrRadReader.GetDouble(4), // ORD_ANTA
+                                OrdInpris = ordrRadReader.IsDBNull(5) ? 0 : ordrRadReader.GetDouble(5), // ORD_INPRIS
+                                OrdRaba = ordrRadReader.IsDBNull(6) ? 0 : ordrRadReader.GetDouble(6), // ORD_RABA
+                                OrdMoms = ordrRadReader.IsDBNull(7) ? 0 : ordrRadReader.GetDouble(7), // ORD_MOMS
+                                OrdTyp = ordrRadReader.IsDBNull(8) ? null : ordrRadReader.GetString(8), // ORD_TYP
+                                OrdKod = ordrRadReader.IsDBNull(9) ? null : ordrRadReader.GetString(9), // ORD_KOD
+                                OrdSummaexkl = ordrRadReader.IsDBNull(10) ? 0 : ordrRadReader.GetDouble(10), // ORD_SUMMAEXKL
+                                OrdCreatedAt = ordrRadReader.IsDBNull(11) ? null : ordrRadReader.GetDateTime(11), // ORD_CREATED_AT
+                                OrdUpdatedAt = ordrRadReader.IsDBNull(12) ? null : ordrRadReader.GetDateTime(12), // ORD_UPDATED_AT
+                                MatchedKeyword = matchedKeyword,
+                                MatchedCategory = matchedCategory
+                            };
+                            
+                            ordrRadData[rowOrderNo].Add(ordrRad);
+                        }
+                        
+                        _logger.LogDebug("Processed ORDRAD data for {OrderCount} orders in {Environment}", ordrRadData.Count, environment);
+                    }
+                    catch (Exception ordrRadEx)
+                    {
+                        _logger.LogError(ordrRadEx, "Failed to process ORDRAD data in {Environment}", environment);
+                    }
+                    
+                    var totalRowCount = ordrRadData.Values.Sum(rows => rows.Count);
+                    
+                    _logger.LogDebug("ORDRAD returned {RowCount} rows for {OrderCount} orders in {Environment}", 
+                        totalRowCount, ordrRadData.Count, environment);
+                    
+                    // Add ORDRAD data to orders
                 foreach (var order in results)
                 {
-                    var allTimestamps = order.Invoices
-                        .SelectMany(invoice => invoice.FortnoxLogs)
-                        .Where(log => log.TimeStamp.HasValue)
-                        .Select(log => log.TimeStamp!.Value)
+                        if (ordrRadData.ContainsKey(order.OrhDokn))
+                        {
+                            order.OrderRows = ordrRadData[order.OrhDokn];
+                            
+                            // Extract distinct categories from order rows
+                            var categories = order.OrderRows
+                                .Where(row => !string.IsNullOrEmpty(row.MatchedCategory))
+                                .Select(row => row.MatchedCategory!)
+                                .Distinct()
+                                .OrderBy(cat => cat)
                         .ToList();
                     
-                    if (allTimestamps.Any())
-                    {
-                        order.MinFortnoxTimeStamp = allTimestamps.Min();
-                        order.MaxFortnoxTimeStamp = allTimestamps.Max();
+                            order.Categories = categories;
+                            
+                            _logger.LogDebug("Added {RowCount} ORDRAD rows to order {OrderNo} in {Environment}", 
+                                order.OrderRows.Count, order.OrhDokn, environment);
+                        }
                     }
+                    
+                    _logger.LogDebug("Found ORDRAD data for {OrderCount} orders in {Environment}", ordrRadData.Count, environment);
                 }
-                
-                _logger.LogInformation("Found {InvoiceCount} invoices for {OrderCount} orders", invoiceCount, orderNumbers.Count);
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to fetch order row data in {Environment}: {Error}", environment, ex.Message);
+                }
             }
-
-            sw.Stop();
-            _logger.LogInformation("Optimized orders with invoices query completed in {ElapsedMs}ms. Found {Count} orders with their invoices", 
-                sw.ElapsedMilliseconds, results.Count);
-
+            
             return results;
         }
         catch (Exception ex)
         {
-            sw.Stop();
-            _logger.LogError(ex, "Optimized orders with invoices query failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
-            throw;
+            _logger.LogError(ex, "Failed to query environment {Environment}: {Error}", environment, ex.Message);
+            return new List<OrdhuvDto>(); // Return empty list instead of throwing to allow other environments to succeed
         }
+    }
+
+    private static KunregDto CreateKunregDto(FbDataReader reader, int startIndex, int endIndex)
+    {
+        var kunKunr = reader.IsDBNull(startIndex) ? 0 : reader.GetInt32(startIndex);
+        var kunNamn = reader.IsDBNull(startIndex + 1) ? null : reader.GetString(startIndex + 1);
+        var kunAdr1 = reader.IsDBNull(startIndex + 2) ? null : reader.GetString(startIndex + 2);
+        var kunAdr2 = reader.IsDBNull(startIndex + 3) ? null : reader.GetString(startIndex + 3);
+        var kunPadr = reader.IsDBNull(startIndex + 4) ? null : reader.GetString(startIndex + 4);
+        var kunOrgn = reader.IsDBNull(startIndex + 5) ? null : reader.GetString(startIndex + 5);
+        var kunTel1 = reader.IsDBNull(startIndex + 6) ? null : reader.GetString(startIndex + 6);
+        var kunTel2 = reader.IsDBNull(startIndex + 7) ? null : reader.GetString(startIndex + 7);
+        var kunTel3 = reader.IsDBNull(startIndex + 8) ? null : reader.GetString(startIndex + 8);
+        var kunEpostadress = reader.IsDBNull(startIndex + 9) ? null : reader.GetString(startIndex + 9);
+
+        // Parse customer type and birthdate from kunOrgn
+        var (customerType, birthDate) = ParseCustomerInfo(kunOrgn);
+
+        // Process phone numbers to find mobile phone
+        var mobilePhone = ProcessPhoneNumbers(kunTel1, kunTel2, kunTel3);
+
+        // Parse name into first and last name or company name
+        var (firstName, lastName, companyName) = ParseName(kunNamn, customerType);
+
+        // Parse postal address into zip code and city
+        var (zipCode, city) = ParsePostalAddress(kunPadr);
+
+        return new KunregDto
+        {
+            KunKunr = kunKunr,
+            KunNamn = kunNamn,
+            KunAdr1 = kunAdr1,
+            KunAdr2 = kunAdr2,
+            KunPadr = kunPadr,
+            KunOrgn = kunOrgn,
+            KunTel1 = kunTel1,
+            KunTel2 = kunTel2,
+            KunTel3 = kunTel3,
+            KunEpostadress = kunEpostadress,
+            CustomerType = customerType,
+            BirthDate = birthDate,
+            FirstName = firstName,
+            LastName = lastName,
+            CompanyName = companyName,
+            ZipCode = zipCode,
+            City = city,
+            MobilePhone = mobilePhone
+        };
+    }
+
+    private static BilregDto CreateBilregDto(FbDataReader reader, int startIndex)
+    {
+        var bilRenr = reader.IsDBNull(startIndex) ? null : reader.GetString(startIndex);
+        var bilBeteckning = reader.IsDBNull(startIndex + 1) ? null : reader.GetString(startIndex + 1);
+        var bilArsm = reader.IsDBNull(startIndex + 2) ? (short?)null : (short)reader.GetInt32(startIndex + 2);
+        var fabrikat = reader.IsDBNull(startIndex + 3) ? null : reader.GetString(startIndex + 3);
+        var bilVehiclecat = reader.IsDBNull(startIndex + 4) ? null : reader.GetString(startIndex + 4);
+        var bilFuel = reader.IsDBNull(startIndex + 5) ? null : reader.GetString(startIndex + 5);
+
+        return new BilregDto
+        {
+            BilBetekning = bilBeteckning,
+            BilArsm = bilArsm,
+            Fabrikat = fabrikat,
+            BilVehiclecat = bilVehiclecat,
+            BilFuel = bilFuel
+        };
     }
 }

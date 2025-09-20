@@ -3,6 +3,7 @@ namespace Niemi.Models.DTOs;
 public class OrdhuvDto
 {
     // Core order information
+    public string Database { get; set; } = string.Empty; // Database environment (NIE2V, NIEM3, etc.)
     public int OrhDokn { get; set; }                    // ORH_DOKN - Order Number
     public int OrhKunr { get; set; }                    // ORH_KUNR - Customer Number
     public DateTime? OrhDokd { get; set; }              // ORH_DOKD - Order Date
@@ -25,6 +26,8 @@ public class OrdhuvDto
     
     // Navigation properties
     public List<InvoiceIndividualDto> Invoices { get; set; } = new List<InvoiceIndividualDto>();
+    public List<OrdrRadDto> OrderRows { get; set; } = new List<OrdrRadDto>(); // ORDRAD rows for this order
+    public List<string> Categories { get; set; } = new List<string>(); // Distinct categories found in order rows
     public KunregDto? Customer { get; set; }            // Customer (ORH_KUNR -> KUNREG.KUN_KUNR)
     public KunregDto? Payer { get; set; }               // Payer/Billing Customer (ORH_BETKUNR -> KUNREG.KUN_KUNR)
     public KunregDto? Driver { get; set; }              // Driver (ORH_DRIVER_NO -> KUNREG.KUN_KUNR)
