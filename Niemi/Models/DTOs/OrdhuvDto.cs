@@ -28,4 +28,5 @@ public class OrdhuvDto
     public KunregDto? Customer { get; set; }            // Customer (ORH_KUNR -> KUNREG.KUN_KUNR)
     public KunregDto? Payer { get; set; }               // Payer/Billing Customer (ORH_BETKUNR -> KUNREG.KUN_KUNR)
     public KunregDto? Driver { get; set; }              // Driver (ORH_DRIVER_NO -> KUNREG.KUN_KUNR)
+    public BilregDto? Vehicle { get; set; }             // Vehicle (ORH_RENR -> BILREG.BIL_RENR)
 }

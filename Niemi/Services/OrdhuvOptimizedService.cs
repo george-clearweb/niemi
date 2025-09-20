@@ -190,6 +190,21 @@ namespace Niemi.Services;
         }
 
         /// <summary>
+        /// Creates a BilregDto from the data reader
+        /// </summary>
+        private static BilregDto CreateBilregDto(System.Data.Common.DbDataReader reader, int bilRenrIndex)
+        {
+            return new BilregDto
+            {
+                BilBetekning = reader.IsDBNull(bilRenrIndex + 1) ? null : reader.GetString(bilRenrIndex + 1), // BIL_BETECKNING
+                BilArsm = reader.IsDBNull(bilRenrIndex + 2) ? null : reader.GetInt16(bilRenrIndex + 2), // BIL_ARSM
+                Fabrikat = reader.IsDBNull(bilRenrIndex + 3) ? null : reader.GetString(bilRenrIndex + 3), // FABRIKAT
+                BilVehiclecat = reader.IsDBNull(bilRenrIndex + 4) ? null : reader.GetString(bilRenrIndex + 4), // BIL_VEHICLECAT
+                BilFuel = reader.IsDBNull(bilRenrIndex + 5) ? null : reader.GetString(bilRenrIndex + 5) // BIL_FUEL
+            };
+        }
+
+        /// <summary>
         /// Creates a KunregDto from the data reader with postal address, name splitting, and mobile phone detection
         /// </summary>
         private static KunregDto CreateKunregDto(System.Data.Common.DbDataReader reader, int kunKunrIndex, int kunPadrIndex)
@@ -291,13 +306,21 @@ namespace Niemi.Services;
                     d.KUN_TEL1 as DRIVER_KUN_TEL1,
                     d.KUN_TEL2 as DRIVER_KUN_TEL2,
                     d.KUN_TEL3 as DRIVER_KUN_TEL3,
-                    d.KUN_EPOSTADRESS as DRIVER_KUN_EPOSTADRESS
+                    d.KUN_EPOSTADRESS as DRIVER_KUN_EPOSTADRESS,
+                    -- Vehicle data (ORH_RENR -> BILREG.BIL_RENR)
+                    b.BIL_RENR as VEHICLE_BIL_RENR,
+                    b.BIL_BETECKNING as VEHICLE_BIL_BETECKNING,
+                    b.BIL_ARSM as VEHICLE_BIL_ARSM,
+                    b.FABRIKAT as VEHICLE_FABRIKAT,
+                    b.BIL_VEHICLECAT as VEHICLE_BIL_VEHICLECAT,
+                    b.BIL_FUEL as VEHICLE_BIL_FUEL
                 FROM ORDHUV o
                 INNER JOIN INVOICEINDIVIDUAL i ON o.ORH_DOKN = i.INVOICE_NO
                 INNER JOIN FORTNOX_LOG f ON CAST(i.INVOICE_NO AS VARCHAR(50)) = f.KEY_NO
                 LEFT JOIN KUNREG c ON o.ORH_KUNR = c.KUN_KUNR
                 LEFT JOIN KUNREG p ON o.ORH_BETKUNR = p.KUN_KUNR
                 LEFT JOIN KUNREG d ON o.ORH_DRIVER_NO = d.KUN_KUNR
+                LEFT JOIN BILREG b ON o.ORH_RENR = b.BIL_RENR
                 WHERE f.TIME_STAMP >= @fromDate 
                   AND f.TIME_STAMP <= @toDate
                   AND f.KEY_NO IS NOT NULL 
@@ -342,7 +365,10 @@ namespace Niemi.Services;
                     Payer = orderReader.IsDBNull(23) ? null : CreateKunregDto(orderReader, 23, 27),
                     
                     // Driver data (ORH_DRIVER_NO)
-                    Driver = orderReader.IsDBNull(33) ? null : CreateKunregDto(orderReader, 33, 37)
+                    Driver = orderReader.IsDBNull(33) ? null : CreateKunregDto(orderReader, 33, 37),
+                    
+                    // Vehicle data (ORH_RENR -> BILREG.BIL_RENR)
+                    Vehicle = orderReader.IsDBNull(43) ? null : CreateBilregDto(orderReader, 43)
                 };
                 
                 results.Add(order);

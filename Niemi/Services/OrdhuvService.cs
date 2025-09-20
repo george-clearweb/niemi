@@ -674,6 +674,38 @@ public class OrdhuvService : IOrdhuvService
         }
     }
 
+    public async Task<string> GetBilregTableStructureAsync()
+    {
+        try
+        {
+            using var connection = new FbConnection(_connectionString);
+            await connection.OpenAsync();
+            
+            using var command = new FbCommand("SELECT FIRST 1 * FROM BILREG", connection);
+            using var reader = await command.ExecuteReaderAsync();
+            
+            if (await reader.ReadAsync())
+            {
+                var structure = new System.Text.StringBuilder();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    var fieldName = reader.GetName(i);
+                    var fieldType = reader.GetFieldType(i);
+                    var value = reader.IsDBNull(i) ? "NULL" : reader.GetValue(i)?.ToString() ?? "NULL";
+                    structure.AppendLine($"{fieldName} ({fieldType.Name}) = {value}");
+                }
+                return structure.ToString();
+            }
+            
+            return "No data found in BILREG table";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get BILREG table structure");
+            throw;
+        }
+    }
+
     private void CleanupEmptyValues(List<Ordhuv> orders)
     {
         foreach (var order in orders)

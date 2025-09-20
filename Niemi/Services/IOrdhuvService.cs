@@ -12,4 +12,5 @@ public interface IOrdhuvService
     Task<string> GetInvoiceIndividualTableStructureAsync();
     Task<string> GetFortnoxLogTableStructureAsync();
     Task<string> GetKunregTableStructureAsync();
+    Task<string> GetBilregTableStructureAsync();
 }

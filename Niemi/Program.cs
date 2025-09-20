@@ -322,6 +322,26 @@ void ConfigureEndpoints(WebApplication app)
     .WithName("GetKunregStructure")
     .WithOpenApi();
 
+    // Temporary endpoint to discover BILREG table structure
+    app.MapGet("/bilreg/structure", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        IOrdhuvService ordhuvService) =>
+    {
+        try
+        {
+            var structure = await ordhuvService.GetBilregTableStructureAsync();
+            return Results.Ok(new { tableStructure = structure });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get BILREG table structure");
+            return Results.Problem($"Failed to get table structure: {ex.Message}");
+        }
+    })
+    .WithName("GetBilregStructure")
+    .WithOpenApi();
+
     // Optimized endpoint for orders with invoices
     app.MapGet("/ordhuv/with-invoices-optimized", async (
         HttpContext httpContext,
