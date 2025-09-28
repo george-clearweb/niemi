@@ -62,6 +62,11 @@ void ConfigureServices(WebApplicationBuilder builder)
     builder.Services.AddScoped<IOrdhuvOptimizedService, OrdhuvOptimizedService>();
     builder.Services.AddScoped<IOrdrRadService, OrdrRadService>();
     
+    // Scheduled services
+    builder.Services.AddHostedService<ScheduledOrderService>();
+    builder.Services.AddScoped<IScheduledOrderService>(provider => 
+        provider.GetRequiredService<ScheduledOrderService>());
+    
     // HTTP client for Rule.io
     builder.Services.AddHttpClient<IRuleIoService, RuleIoService>();
     
@@ -522,15 +527,7 @@ void ConfigureEndpoints(WebApplication app)
             logger.LogInformation("Test flow completed in {ElapsedMs}ms. Processed {OrderCount} orders in single request", 
                 sw.ElapsedMilliseconds, orders.Count());
             
-            return Results.Ok(new {
-                summary = new {
-                    orderCount = orders.Count(),
-                    subscriberCount = ruleIoRequest.Subscribers.Count,
-                    elapsedMs = sw.ElapsedMilliseconds
-                },
-                request = ruleIoRequest,
-                response = result
-            });
+            return Results.Ok(result);
         }
         catch (Exception ex)
         {
@@ -540,6 +537,26 @@ void ConfigureEndpoints(WebApplication app)
         }
     })
     .WithName("TestFlow")
+    .WithOpenApi();
+
+    // Manual trigger for scheduled order processing
+    app.MapPost("/scheduled/process-daily-orders", async (
+        ILogger<Program> logger,
+        IScheduledOrderService scheduledOrderService) =>
+    {
+        try
+        {
+            logger.LogInformation("Manually triggering daily order processing");
+            await scheduledOrderService.ProcessDailyOrdersAsync();
+            return Results.Ok(new { message = "Daily order processing completed successfully" });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error during manual daily order processing");
+            return Results.Problem($"Manual processing failed: {ex.Message}");
+        }
+    })
+    .WithName("ProcessDailyOrders")
     .WithOpenApi();
 
 }
@@ -566,15 +583,18 @@ static RuleIoSubscribersRequestDto TransformOrdersToRuleIoFormat(IEnumerable<Ord
                 new() { Key = "Datum.Födelsedag", Value = order.Customer?.BirthDate?.ToString("yyyy-MM-dd") ?? "", Type = "date" },
                 new() { Key = "Infoflex.Datum", Value = order.OrhDokd?.ToString("yyyy-MM-dd") ?? "", Type = "date" },
                 new() { Key = "Infoflex.Doknr", Value = order.OrhDokn.ToString(), Type = "text" },
-                new() { Key = "Infoflex.Belopp", Value = order.OrhSummainkl?.ToString() ?? "", Type = "text" },
-                new() { Key = "Infoflex.Anlaggning", Value = GetFacilityInfo(order.Database ?? ""), Type = "multiple" },
+                new() { Key = "Infoflex.Pris", Value = order.OrhSummainkl?.ToString() ?? "", Type = "text" },
+                new() { Key = "Infoflex.Anlaggning", Value = GetFacilityInfo(order.Database ?? "")[0], Type = "text" },
+                new() { Key = "Infoflex.AnlaggningEpost", Value = GetFacilityInfo(order.Database ?? "")[1], Type = "text" },
+                new() { Key = "Infoflex.AnlaggningTfn", Value = GetFacilityInfo(order.Database ?? "")[2], Type = "text" },
                 new() { Key = "Infoflex.Fordonstyp", Value = order.Vehicle?.BilVehiclecat ?? "", Type = "text" },
                 new() { Key = "Infoflex.Marke", Value = order.Vehicle?.Fabrikat ?? "", Type = "text" },
-                new() { Key = "Infoflex.Miltal", Value = "0", Type = "text" }, // Default value
+                new() { Key = "Infoflex.Mätarställning", Value = "0", Type = "text" }, // Default value
                 new() { Key = "Infoflex.Modell", Value = order.Vehicle?.BilBetekning ?? "", Type = "text" },
                 new() { Key = "Infoflex.Modellar", Value = order.Vehicle?.BilArsm.ToString() ?? "", Type = "text" },
                 new() { Key = "Infoflex.Regnr", Value = order.OrhRenr ?? "", Type = "text" },
-                new() { Key = "Infoflex.Ordrad", Value = order.Categories?.ToArray() ?? new string[0], Type = "multiple" }
+                new() { Key = "Infoflex.Jobbtyp", Value = order.Categories?.ToArray() ?? new string[0], Type = "multiple" },
+                new() { Key = "Infoflex.Skapad", Value = order.OrhCreatedAt?.ToString("yyyy-MM-dd") ?? "", Type = "date" }
             }
         };
         
@@ -595,13 +615,13 @@ static string[] GetFacilityInfo(string database)
 {
     return database.ToUpper() switch
     {
-        "NIE2V" => new[] { "Niemi Boden", "info@niemiboden.se", "0920-23 00 88" },
-        "NIEM3" => new[] { "Niemi Luleå", "info@niemilulea.se", "0920-23 00 89" },
-        "NIEM4" => new[] { "Niemi Piteå", "info@niemipitea.se", "0920-23 00 90" },
-        "NIEM5" => new[] { "Niemi Skellefteå", "info@niemiskelleftea.se", "0920-23 00 91" },
-        "NIEM6" => new[] { "Niemi Umeå", "info@niemiumea.se", "0920-23 00 92" },
-        "NIEM7" => new[] { "Niemi Örnsköldsvik", "info@niemiornskoldsvik.se", "0920-23 00 93" },
-        "NIEMI" => new[] { "Niemi Stockholm", "info@niemistockholm.se", "0920-23 00 94" },
-        _ => new[] { "Niemi Unknown", "noreply@niemibil.se", "0920-23 00 88" }
+        "NIE2V" => new[] { "Spantgatan", "verkstad.spantgatan@niemibil.se", "0920-23 00 88" },
+        "NIEM3" => new[] { "Umeå", "verkstad.umea@niemibil.se", "090-428 80" },
+        "NIEM4" => new[] { "Skellefteå", "verkstad.skelleftea@niemibil.se", "0910 - 573 90" },
+        "NIEM6" => new[] { "Uppsala", "verkstad.uppsala@niemibil.se", "018 69 68 00" }, 
+        // "NIEM5" => new[] { "Kiruna", "kiruna@niemibil.se", "0980 - 642 00" }, //Försäljning - DISABLED
+        // "NIEM7" => new[] { "Gävle", "gavle@niemibil.se", "026-16 19 00" }, //Försäljning - DISABLED
+        // "NIEMI" => new[] { "Banvägen", "intresse@niemibil.se", "0920-26 00 87" }, //Försäljning - DISABLED
+        _ => new[] { "NIEMI BIL", "noreply@niemibil.se", "0920-23 00 88" }
     };
 }

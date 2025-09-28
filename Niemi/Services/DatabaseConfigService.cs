@@ -15,10 +15,11 @@ public class DatabaseConfigService : IDatabaseConfigService
             { "NIE2V", _configuration.GetConnectionString("ConnectionStringNIE2V") ?? throw new ArgumentNullException("ConnectionStringNIE2V is missing") },
             { "NIEM3", _configuration.GetConnectionString("ConnectionStringNIEM3") ?? throw new ArgumentNullException("ConnectionStringNIEM3 is missing") },
             { "NIEM4", _configuration.GetConnectionString("ConnectionStringNIEM4") ?? throw new ArgumentNullException("ConnectionStringNIEM4 is missing") },
-            { "NIEM5", _configuration.GetConnectionString("ConnectionStringNIEM5") ?? throw new ArgumentNullException("ConnectionStringNIEM5 is missing") },
-            { "NIEM6", _configuration.GetConnectionString("ConnectionStringNIEM6") ?? throw new ArgumentNullException("ConnectionStringNIEM6 is missing") },
-            { "NIEM7", _configuration.GetConnectionString("ConnectionStringNIEM7") ?? throw new ArgumentNullException("ConnectionStringNIEM7 is missing") },
-            { "NIEMI", _configuration.GetConnectionString("ConnectionStringNIEMI") ?? throw new ArgumentNullException("ConnectionStringNIEMI is missing") }
+            { "NIEM6", _configuration.GetConnectionString("ConnectionStringNIEM6") ?? throw new ArgumentNullException("ConnectionStringNIEM6 is missing") }
+            // NIEM5, NIEM7, NIEMI are disabled - not needed for current data requirements
+            // { "NIEM5", _configuration.GetConnectionString("ConnectionStringNIEM5") ?? throw new ArgumentNullException("ConnectionStringNIEM5 is missing") },
+            // { "NIEM7", _configuration.GetConnectionString("ConnectionStringNIEM7") ?? throw new ArgumentNullException("ConnectionStringNIEM7 is missing") },
+            // { "NIEMI", _configuration.GetConnectionString("ConnectionStringNIEMI") ?? throw new ArgumentNullException("ConnectionStringNIEMI is missing") }
         };
     }
 

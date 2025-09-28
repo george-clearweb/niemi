@@ -40,7 +40,6 @@ public class RuleIoService : IRuleIoService
 
             var json = JsonSerializer.Serialize(request, new JsonSerializerOptions
             {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 WriteIndented = true
             });
 
@@ -56,10 +55,7 @@ public class RuleIoService : IRuleIoService
 
             if (response.IsSuccessStatusCode)
             {
-                var result = JsonSerializer.Deserialize<RuleIoSubscribersResponseDto>(responseContent, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                var result = JsonSerializer.Deserialize<RuleIoSubscribersResponseDto>(responseContent);
 
                 return result ?? new RuleIoSubscribersResponseDto
                 {

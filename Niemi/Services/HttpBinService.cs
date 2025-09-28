@@ -31,7 +31,6 @@ public class HttpBinService : IHttpBinService
 
             var json = JsonSerializer.Serialize(request, new JsonSerializerOptions
             {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 WriteIndented = true
             });
 
@@ -47,10 +46,7 @@ public class HttpBinService : IHttpBinService
 
             if (response.IsSuccessStatusCode)
             {
-                var result = JsonSerializer.Deserialize<object>(responseContent, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                var result = JsonSerializer.Deserialize<object>(responseContent);
 
                 return new HttpBinResponseDto
                 {
