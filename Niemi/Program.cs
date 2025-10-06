@@ -539,6 +539,83 @@ void ConfigureEndpoints(WebApplication app)
     .WithName("TestFlow")
     .WithOpenApi();
 
+    // Production endpoint to fetch orders and forward to Rule.io
+    // Example: POST /rule-flow?fromDate=2024-01-01&toDate=2024-01-31&orhStat=KON&customerType=Private
+    app.MapPost("/rule-flow", async (
+        HttpContext httpContext,
+        ILogger<Program> logger,
+        [Required] DateTime fromDate,
+        [Required] DateTime toDate,
+        string? orhStat, // Example: "KON" (only KON status orders)
+        string? customerType, // Example: "Private" (only Private customers)
+        IOrdhuvOptimizedService ordhuvOptimizedService,
+        IRuleIoService ruleIoService) =>
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        try
+        {
+            if (fromDate > toDate)
+            {
+                return Results.BadRequest("fromDate must be less than or equal to toDate");
+            }
+
+            // Step 1: Fetch orders from the optimized endpoint
+            logger.LogInformation("Fetching orders from {FromDate} to {ToDate} with orhStat={OrhStat}, customerType={CustomerType}", 
+                fromDate, toDate, orhStat, customerType);
+            
+            var orders = await ordhuvOptimizedService.GetOrdersWithInvoicesByDateAsync(
+                fromDate, 
+                toDate,
+                null, // environment
+                null, // environments
+                orhStat,
+                customerType);
+                
+            logger.LogInformation("Found {OrderCount} orders", orders.Count());
+            
+            // Step 2: Filter orders that have either email or phone number
+            var filteredOrders = orders.Where(order => 
+                !string.IsNullOrEmpty(order.Customer?.KunEpostadress) || 
+                !string.IsNullOrEmpty(order.Customer?.MobilePhone));
+                
+            logger.LogInformation("Filtered to {FilteredCount} orders with email or phone (from {TotalCount} total)", 
+                filteredOrders.Count(), orders.Count());
+            
+            if (!filteredOrders.Any())
+            {
+                return Results.Ok(new { message = "No orders found with email or phone number", processedCount = 0 });
+            }
+
+            // Step 3: Transform orders to Rule.io format (single request with all subscribers)
+            var ruleIoRequest = TransformOrdersToRuleIoFormat(filteredOrders);
+            
+            // Step 4: Send the single request to Rule.io
+            var result = await ruleIoService.CreateSubscribersAsync(ruleIoRequest);
+                
+            sw.Stop();
+            logger.LogInformation("Rule.io flow completed in {ElapsedMs}ms. Processed {OrderCount} orders in single request", 
+                sw.ElapsedMilliseconds, orders.Count());
+            
+            if (result.Success)
+            {
+                return Results.Ok(result);
+            }
+            else
+            {
+                return Results.BadRequest(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            logger.LogError(ex, "Rule.io flow failed after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            return Results.Problem($"Rule.io flow failed: {ex.Message}");
+        }
+    })
+    .WithName("RuleFlow")
+    .WithOpenApi();
+
     // Manual trigger for scheduled order processing
     app.MapPost("/scheduled/process-daily-orders", async (
         ILogger<Program> logger,
@@ -569,11 +646,11 @@ static RuleIoSubscribersRequestDto TransformOrdersToRuleIoFormat(IEnumerable<Ord
     foreach (var order in orders)
     {
         // Create subscriber data from order
-        var subscriber = new RuleIoSubscriberDto
-        {
-            Email = order.Customer?.KunEpostadress ?? "",
-            PhoneNumber = order.Customer?.MobilePhone,
-            Language = "sv",
+            var subscriber = new RuleIoSubscriberDto
+            {
+                Email = order.Customer?.KunEpostadress ?? "",
+                PhoneNumber = order.Customer?.MobilePhone ?? "",
+                Language = "sv",
             Fields = new List<RuleIoFieldDto>
             {
                 new() { Key = "Kundinfo.Personnr", Value = order.Customer?.KunOrgn ?? "", Type = "text" },
@@ -615,11 +692,12 @@ static string[] GetFacilityInfo(string database)
 {
     return database.ToUpper() switch
     {
-        "NIE2V" => new[] { "Spantgatan", "verkstad.spantgatan@niemibil.se", "0920-23 00 88" },
-        "NIEM3" => new[] { "Umeå", "verkstad.umea@niemibil.se", "090-428 80" },
-        "NIEM4" => new[] { "Skellefteå", "verkstad.skelleftea@niemibil.se", "0910 - 573 90" },
-        "NIEM6" => new[] { "Uppsala", "verkstad.uppsala@niemibil.se", "018 69 68 00" }, 
-        // "NIEM5" => new[] { "Kiruna", "kiruna@niemibil.se", "0980 - 642 00" }, //Försäljning - DISABLED
+        "NIE2V" => new[] { "Spantgatan", "verkstad.spantgatan@niemibil.se", "0920-830 60" }, //Verkstad
+        "NIEM3" => new[] { "Umeå", "verkstad.umea@niemibil.se", "090-428 88" }, //Verkstad - Försäljning
+        "NIEM4" => new[] { "Skellefteå", "verkstad.skelleftea@niemibil.se", "0910-548 50" }, //Verkstad - Försäljning
+        "NIEM5" => new[] { "Kiruna", "kiruna@niemibil.se", "0980-642 00" }, //Verkstad - Försäljning
+        "NIEM6" => new[] { "Uppsala", "verkstad.uppsala@niemibil.se", "018-69 68 68" }, //Verkstad - Försäljning
+        
         // "NIEM7" => new[] { "Gävle", "gavle@niemibil.se", "026-16 19 00" }, //Försäljning - DISABLED
         // "NIEMI" => new[] { "Banvägen", "intresse@niemibil.se", "0920-26 00 87" }, //Försäljning - DISABLED
         _ => new[] { "NIEMI BIL", "noreply@niemibil.se", "0920-23 00 88" }

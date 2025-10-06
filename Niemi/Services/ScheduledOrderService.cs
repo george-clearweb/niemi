@@ -66,10 +66,18 @@ public class ScheduledOrderService : BackgroundService, IScheduledOrderService
 
             _logger.LogInformation("Found {OrderCount} orders for {Date}", orders.Count(), yesterday.ToString("yyyy-MM-dd"));
 
-            if (orders.Any())
+            // Filter orders that have either email or phone number
+            var filteredOrders = orders.Where(order => 
+                !string.IsNullOrEmpty(order.Customer?.KunEpostadress) || 
+                !string.IsNullOrEmpty(order.Customer?.MobilePhone));
+
+            _logger.LogInformation("Filtered to {FilteredCount} orders with email or phone (from {TotalCount} total) for {Date}", 
+                filteredOrders.Count(), orders.Count(), yesterday.ToString("yyyy-MM-dd"));
+
+            if (filteredOrders.Any())
             {
                 // Transform orders to Rule.io format
-                var ruleIoRequest = TransformOrdersToRuleIoFormat(orders);
+                var ruleIoRequest = TransformOrdersToRuleIoFormat(filteredOrders);
 
                 // Send to HttpBin for testing
                 var result = await httpBinService.SendToHttpBinAsync(ruleIoRequest);
@@ -107,7 +115,7 @@ public class ScheduledOrderService : BackgroundService, IScheduledOrderService
             var subscriber = new RuleIoSubscriberDto
             {
                 Email = order.Customer?.KunEpostadress ?? "",
-                PhoneNumber = order.Customer?.MobilePhone,
+                PhoneNumber = order.Customer?.MobilePhone ?? "",
                 Language = "sv",
                 Fields = new List<RuleIoFieldDto>
                 {
