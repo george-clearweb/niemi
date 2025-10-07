@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,21 +10,63 @@ public class ScheduledOrderService : BackgroundService, IScheduledOrderService
 {
     private readonly ILogger<ScheduledOrderService> _logger;
     private readonly IServiceProvider _serviceProvider;
-    private readonly TimeSpan _period = TimeSpan.FromHours(24); // Run every 24 hours
+    private readonly IConfiguration _configuration;
+    private bool _isEnabled;
+    private int _scheduledHour;
+    private TimeZoneInfo _timeZone;
 
-    public ScheduledOrderService(ILogger<ScheduledOrderService> logger, IServiceProvider serviceProvider)
+    public ScheduledOrderService(
+        ILogger<ScheduledOrderService> logger, 
+        IServiceProvider serviceProvider,
+        IConfiguration configuration)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
+        _configuration = configuration;
+        
+        // Read configuration
+        _isEnabled = _configuration.GetValue<bool>("ScheduledOrderService:Enabled", false);
+        _scheduledHour = _configuration.GetValue<int>("ScheduledOrderService:ScheduledHour", 8);
+        var timeZoneId = _configuration.GetValue<string>("ScheduledOrderService:TimeZone", "Central European Standard Time");
+        
+        try
+        {
+            _timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch
+        {
+            _logger.LogWarning("TimeZone '{TimeZone}' not found, using UTC", timeZoneId);
+            _timeZone = TimeZoneInfo.Utc;
+        }
+        
+        _logger.LogInformation("ScheduledOrderService configured: Enabled={Enabled}, ScheduledTime={Hour}:00 {TimeZone}", 
+            _isEnabled, _scheduledHour, _timeZone.Id);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Wait a bit before starting to allow the application to fully start
-        await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+        if (!_isEnabled)
+        {
+            _logger.LogWarning("ScheduledOrderService is DISABLED in configuration. No scheduled processing will occur.");
+            return;
+        }
+
+        _logger.LogInformation("ScheduledOrderService is ENABLED. Will run daily at {Hour}:00 {TimeZone}", 
+            _scheduledHour, _timeZone.Id);
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Calculate time until next scheduled run
+            var delay = CalculateDelayUntilNextRun();
+            
+            _logger.LogInformation("Next scheduled run in {Hours} hours {Minutes} minutes at {NextRun}", 
+                (int)delay.TotalHours, delay.Minutes, 
+                TimeZoneInfo.ConvertTime(DateTime.UtcNow.Add(delay), _timeZone).ToString("yyyy-MM-dd HH:mm:ss"));
+
+            // Wait until the scheduled time
+            await Task.Delay(delay, stoppingToken);
+
+            // Run the processing
             try
             {
                 await ProcessDailyOrdersAsync(stoppingToken);
@@ -32,17 +75,41 @@ public class ScheduledOrderService : BackgroundService, IScheduledOrderService
             {
                 _logger.LogError(ex, "Error occurred while processing daily orders");
             }
-
-            // Wait for the next execution
-            await Task.Delay(_period, stoppingToken);
         }
+    }
+
+    private TimeSpan CalculateDelayUntilNextRun()
+    {
+        var nowUtc = DateTime.UtcNow;
+        var nowInTimeZone = TimeZoneInfo.ConvertTime(nowUtc, _timeZone);
+        
+        // Calculate next scheduled time
+        var nextRun = nowInTimeZone.Date.AddHours(_scheduledHour);
+        
+        // If we've already passed today's scheduled time, schedule for tomorrow
+        if (nowInTimeZone >= nextRun)
+        {
+            nextRun = nextRun.AddDays(1);
+        }
+        
+        // Convert back to UTC for the delay calculation
+        var nextRunUtc = TimeZoneInfo.ConvertTimeToUtc(nextRun, _timeZone);
+        var delay = nextRunUtc - nowUtc;
+        
+        // Ensure minimum delay of 1 minute
+        if (delay.TotalMinutes < 1)
+        {
+            delay = TimeSpan.FromMinutes(1);
+        }
+        
+        return delay;
     }
 
     public async Task ProcessDailyOrdersAsync(CancellationToken cancellationToken = default)
     {
         using var scope = _serviceProvider.CreateScope();
         var ordhuvOptimizedService = scope.ServiceProvider.GetRequiredService<IOrdhuvOptimizedService>();
-        var httpBinService = scope.ServiceProvider.GetRequiredService<IHttpBinService>();
+        var ruleIoService = scope.ServiceProvider.GetRequiredService<IRuleIoService>();
 
         // Get previous day's date range
         var yesterday = DateTime.Today.AddDays(-1);
@@ -79,23 +146,26 @@ public class ScheduledOrderService : BackgroundService, IScheduledOrderService
                 // Transform orders to Rule.io format
                 var ruleIoRequest = TransformOrdersToRuleIoFormat(filteredOrders);
 
-                // Send to HttpBin for testing
-                var result = await httpBinService.SendToHttpBinAsync(ruleIoRequest);
+                // Send to Rule.io
+                _logger.LogInformation("Sending {OrderCount} orders to Rule.io for {Date}", 
+                    filteredOrders.Count(), yesterday.ToString("yyyy-MM-dd"));
+                
+                var result = await ruleIoService.CreateSubscribersAsync(ruleIoRequest);
 
                 if (result.Success)
                 {
-                    _logger.LogInformation("Successfully processed {OrderCount} orders for {Date}", 
-                        orders.Count(), yesterday.ToString("yyyy-MM-dd"));
+                    _logger.LogInformation("Successfully sent {OrderCount} orders to Rule.io for {Date}", 
+                        filteredOrders.Count(), yesterday.ToString("yyyy-MM-dd"));
                 }
                 else
                 {
-                    _logger.LogError("Failed to process orders for {Date}: {Message}", 
+                    _logger.LogError("Failed to send orders to Rule.io for {Date}: {Message}", 
                         yesterday.ToString("yyyy-MM-dd"), result.Message);
                 }
             }
             else
             {
-                _logger.LogInformation("No orders found for {Date}", yesterday.ToString("yyyy-MM-dd"));
+                _logger.LogInformation("No orders with email/phone found for {Date}", yesterday.ToString("yyyy-MM-dd"));
             }
         }
         catch (Exception ex)

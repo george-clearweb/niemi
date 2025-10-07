@@ -1,0 +1,32 @@
+[Unit]
+Description=Niemi API Service
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/niemi-api
+ExecStart=/usr/bin/dotnet /var/www/niemi-api/Niemi.dll
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=niemi-api
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+# Performance tuning
+Environment=DOTNET_GCServer=1
+Environment=DOTNET_GCConcurrent=1
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
