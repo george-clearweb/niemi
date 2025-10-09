@@ -76,14 +76,13 @@ void ConfigureServices(WebApplicationBuilder builder)
 
 void ConfigureApp(WebApplication app)
 {
-    if (app.Environment.IsDevelopment())
+    // Enable Swagger in all environments (safe on internal network)
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
     {
-        app.UseSwagger();
-        app.UseSwaggerUI(c =>
-        {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Niemi API V1");
-        });
-    }
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Niemi API V1");
+        c.RoutePrefix = "swagger"; // Accessible at /swagger
+    });
 
     app.UseHttpsRedirection();
 }
@@ -666,7 +665,7 @@ static RuleIoSubscribersRequestDto TransformOrdersToRuleIoFormat(IEnumerable<Ord
                 new() { Key = "Infoflex.AnlaggningTfn", Value = GetFacilityInfo(order.Database ?? "")[2], Type = "text" },
                 new() { Key = "Infoflex.Fordonstyp", Value = order.Vehicle?.BilVehiclecat ?? "", Type = "text" },
                 new() { Key = "Infoflex.Marke", Value = order.Vehicle?.Fabrikat ?? "", Type = "text" },
-                new() { Key = "Infoflex.Mätarställning", Value = "0", Type = "text" }, // Default value
+                new() { Key = "Infoflex.Mätarställning", Value = order.OrhMils?.ToString() ?? "0", Type = "text" },
                 new() { Key = "Infoflex.Modell", Value = order.Vehicle?.BilBetekning ?? "", Type = "text" },
                 new() { Key = "Infoflex.Modellar", Value = order.Vehicle?.BilArsm.ToString() ?? "", Type = "text" },
                 new() { Key = "Infoflex.Regnr", Value = order.OrhRenr ?? "", Type = "text" },

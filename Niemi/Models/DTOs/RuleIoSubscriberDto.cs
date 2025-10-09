@@ -48,14 +48,24 @@ public class RuleIoSubscribersRequestDto
 
 public class RuleIoSubscribersResponseDto
 {
+    [JsonPropertyName("success")]
     public bool Success { get; set; }
+    
+    [JsonPropertyName("message")]
     public string? Message { get; set; }
+    
+    [JsonPropertyName("results")]
     public List<RuleIoSubscriberResultDto>? Results { get; set; }
 }
 
 public class RuleIoSubscriberResultDto
 {
+    [JsonPropertyName("email")]
     public string? Email { get; set; }
+    
+    [JsonPropertyName("success")]
     public bool Success { get; set; }
+    
+    [JsonPropertyName("error")]
     public string? Error { get; set; }
 }

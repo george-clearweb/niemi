@@ -408,6 +408,7 @@ namespace Niemi.Services;
                     o.ORH_NAMN,
                     o.ORH_SUMMAINKL,
                     o.ORH_SUMMAEXKL,
+                    o.ORH_MILS,
                     o.ORH_CREATED_AT,
                     o.ORH_UPDATED_AT,
                     CASE WHEN o.ORH_BETKUNR > 0 THEN o.ORH_BETKUNR ELSE NULL END as ORH_BETKUNR,
@@ -499,24 +500,25 @@ namespace Niemi.Services;
                     OrhNamn = orderReader.IsDBNull(7) ? null : orderReader.GetString(7),   // ORH_NAMN - Customer Name
                     OrhSummainkl = orderReader.IsDBNull(8) ? null : orderReader.GetDouble(8), // ORH_SUMMAINKL - Sum Including
                     OrhSummaexkl = orderReader.IsDBNull(9) ? null : orderReader.GetDouble(9), // ORH_SUMMAEXKL - Sum Excluding
-                    OrhCreatedAt = orderReader.IsDBNull(10) ? null : orderReader.GetDateTime(10), // ORH_CREATED_AT - Created At
-                    OrhUpdatedAt = orderReader.IsDBNull(11) ? null : orderReader.GetDateTime(11), // ORH_UPDATED_AT - Updated At
-                    OrhBetkunr = orderReader.IsDBNull(12) ? null : orderReader.GetInt32(12), // ORH_BETKUNR - Payer Number
-                    OrhDriverNo = orderReader.IsDBNull(13) ? null : orderReader.GetInt32(13), // ORH_DRIVER_NO - Driver Number
+                    OrhMils = orderReader.IsDBNull(10) ? null : orderReader.GetInt32(10), // ORH_MILS - Odometer Reading
+                    OrhCreatedAt = orderReader.IsDBNull(11) ? null : orderReader.GetDateTime(11), // ORH_CREATED_AT - Created At
+                    OrhUpdatedAt = orderReader.IsDBNull(12) ? null : orderReader.GetDateTime(12), // ORH_UPDATED_AT - Updated At
+                    OrhBetkunr = orderReader.IsDBNull(13) ? null : orderReader.GetInt32(13), // ORH_BETKUNR - Payer Number
+                    OrhDriverNo = orderReader.IsDBNull(14) ? null : orderReader.GetInt32(14), // ORH_DRIVER_NO - Driver Number
                     Invoices = new List<InvoiceIndividualDto>(),
                     OrderRows = new List<OrdrRadDto>(),
                     
                     // Customer data (ORH_KUNR)
-                    Customer = orderReader.IsDBNull(14) ? null : CreateKunregDto(orderReader, 14, 18),
+                    Customer = orderReader.IsDBNull(15) ? null : CreateKunregDto(orderReader, 15, 19),
                     
                     // Payer data (ORH_BETKUNR)
-                    Payer = orderReader.IsDBNull(24) ? null : CreateKunregDto(orderReader, 24, 28),
+                    Payer = orderReader.IsDBNull(25) ? null : CreateKunregDto(orderReader, 25, 29),
                     
                     // Driver data (ORH_DRIVER_NO)
-                    Driver = orderReader.IsDBNull(34) ? null : CreateKunregDto(orderReader, 34, 38),
+                    Driver = orderReader.IsDBNull(35) ? null : CreateKunregDto(orderReader, 35, 39),
                     
                     // Vehicle data (ORH_RENR -> BILREG.BIL_RENR)
-                    Vehicle = orderReader.IsDBNull(44) ? null : CreateBilregDto(orderReader, 44)
+                    Vehicle = orderReader.IsDBNull(45) ? null : CreateBilregDto(orderReader, 45)
                 };
                 
                 results.Add(order);
@@ -970,6 +972,7 @@ namespace Niemi.Services;
                     o.ORH_NAMN,
                     o.ORH_SUMMAINKL,
                     o.ORH_SUMMAEXKL,
+                    o.ORH_MILS,
                     o.ORH_CREATED_AT,
                     o.ORH_UPDATED_AT,
                     CASE WHEN o.ORH_BETKUNR > 0 THEN o.ORH_BETKUNR ELSE NULL END as ORH_BETKUNR,
@@ -1065,24 +1068,25 @@ namespace Niemi.Services;
                     OrhNamn = orderReader.IsDBNull(7) ? null : orderReader.GetString(7),   // ORH_NAMN - Customer Name
                     OrhSummainkl = orderReader.IsDBNull(8) ? null : orderReader.GetDouble(8), // ORH_SUMMAINKL - Sum Including
                     OrhSummaexkl = orderReader.IsDBNull(9) ? null : orderReader.GetDouble(9), // ORH_SUMMAEXKL - Sum Excluding
-                    OrhCreatedAt = orderReader.IsDBNull(10) ? null : orderReader.GetDateTime(10), // ORH_CREATED_AT - Created At
-                    OrhUpdatedAt = orderReader.IsDBNull(11) ? null : orderReader.GetDateTime(11), // ORH_UPDATED_AT - Updated At
-                    OrhBetkunr = orderReader.IsDBNull(12) ? null : orderReader.GetInt32(12), // ORH_BETKUNR - Payer Number
-                    OrhDriverNo = orderReader.IsDBNull(13) ? null : orderReader.GetInt32(13), // ORH_DRIVER_NO - Driver Number
+                    OrhMils = orderReader.IsDBNull(10) ? null : orderReader.GetInt32(10), // ORH_MILS - Odometer Reading
+                    OrhCreatedAt = orderReader.IsDBNull(11) ? null : orderReader.GetDateTime(11), // ORH_CREATED_AT - Created At
+                    OrhUpdatedAt = orderReader.IsDBNull(12) ? null : orderReader.GetDateTime(12), // ORH_UPDATED_AT - Updated At
+                    OrhBetkunr = orderReader.IsDBNull(13) ? null : orderReader.GetInt32(13), // ORH_BETKUNR - Payer Number
+                    OrhDriverNo = orderReader.IsDBNull(14) ? null : orderReader.GetInt32(14), // ORH_DRIVER_NO - Driver Number
                     Invoices = new List<InvoiceIndividualDto>(),
                     OrderRows = new List<OrdrRadDto>(),
                     
                     // Customer data (ORH_KUNR)
-                    Customer = orderReader.IsDBNull(14) ? null : CreateKunregDto(orderReader, 14, 18),
+                    Customer = orderReader.IsDBNull(15) ? null : CreateKunregDto(orderReader, 15, 19),
                     
                     // Payer data (ORH_BETKUNR)
-                    Payer = orderReader.IsDBNull(24) ? null : CreateKunregDto(orderReader, 24, 28),
+                    Payer = orderReader.IsDBNull(25) ? null : CreateKunregDto(orderReader, 25, 29),
                     
                     // Driver data (ORH_DRIVER_NO)
-                    Driver = orderReader.IsDBNull(34) ? null : CreateKunregDto(orderReader, 34, 38),
+                    Driver = orderReader.IsDBNull(35) ? null : CreateKunregDto(orderReader, 35, 39),
                     
                     // Vehicle data (ORH_RENR -> BILREG.BIL_RENR)
-                    Vehicle = orderReader.IsDBNull(44) ? null : CreateBilregDto(orderReader, 44)
+                    Vehicle = orderReader.IsDBNull(45) ? null : CreateBilregDto(orderReader, 45)
                 };
                 
                 results.Add(order);

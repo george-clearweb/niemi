@@ -14,6 +14,7 @@ public class OrdhuvDto
     public string? OrhNamn { get; set; }                // ORH_NAMN - Customer Name
     public double? OrhSummainkl { get; set; }           // ORH_SUMMAINKL - Sum Including
     public double? OrhSummaexkl { get; set; }           // ORH_SUMMAEXKL - Sum Excluding
+    public int? OrhMils { get; set; }                   // ORH_MILS - Odometer Reading (Mätarställning)
     public DateTime? OrhCreatedAt { get; set; }         // ORH_CREATED_AT - Created At
     public DateTime? OrhUpdatedAt { get; set; }         // ORH_UPDATED_AT - Updated At
     

@@ -202,7 +202,7 @@ public class ScheduledOrderService : BackgroundService, IScheduledOrderService
                     new() { Key = "Infoflex.AnlaggningTfn", Value = GetFacilityInfo(order.Database ?? "")[2], Type = "text" },
                     new() { Key = "Infoflex.Fordonstyp", Value = order.Vehicle?.BilVehiclecat ?? "", Type = "text" },
                     new() { Key = "Infoflex.Marke", Value = order.Vehicle?.Fabrikat ?? "", Type = "text" },
-                    new() { Key = "Infoflex.Mätarställning", Value = "0", Type = "text" }, // Default value
+                    new() { Key = "Infoflex.Mätarställning", Value = order.OrhMils?.ToString() ?? "0", Type = "text" },
                     new() { Key = "Infoflex.Modell", Value = order.Vehicle?.BilBetekning ?? "", Type = "text" },
                     new() { Key = "Infoflex.Modellar", Value = order.Vehicle?.BilArsm.ToString() ?? "", Type = "text" },
                     new() { Key = "Infoflex.Regnr", Value = order.OrhRenr ?? "", Type = "text" },
