@@ -17,18 +17,11 @@ namespace Niemi.Services;
     }
 
     // Static keyword categories data for matching
+    // Priority order matches official specification (IDs 1-33)
     // NOTE: Short keywords (AC, MV, MOK) have leading spaces to prevent false positives
+    // Default: "Reparation" is added at order level only if order has labor rows but no categories matched
     private static readonly List<KeywordCategoryDto> KeywordCategories = new()
     {
-        new KeywordCategoryDto
-        {
-            Category = "Reparation",
-            Entries = new List<KeywordEntryDto>
-            {
-                new() { Id = 0, Keyword = "REPARATION" },
-                new() { Id = 34, Keyword = "KALIBRERING" }
-            }
-        },
         new KeywordCategoryDto
         {
             Category = "Felsökning",
@@ -96,7 +89,7 @@ namespace Niemi.Services;
             {
                 new() { Id = 26, Keyword = "DÄCK" },
                 new() { Id = 27, Keyword = "HJULINSTÄLLNING" },
-                new() { Id = 28, Keyword = "HJULSMATNING" },
+                new() { Id = 28, Keyword = "HJULSMÄTNING" },
                 new() { Id = 29, Keyword = "HJULSKIFT" },
                 new() { Id = 30, Keyword = "TPMS" },
                 new() { Id = 31, Keyword = "PUNK" },
@@ -114,7 +107,8 @@ namespace Niemi.Services;
     };
 
         /// <summary>
-    /// Matches keywords in the provided text and returns the first match
+    /// Matches keywords in the provided text and returns the first match.
+    /// If no keyword matches, returns null (Reparation will be added at order level if needed).
         /// </summary>
     private static (string? keyword, string? category) MatchKeywords(string? text)
         {
@@ -134,6 +128,7 @@ namespace Niemi.Services;
             }
         }
 
+        // No match found
                 return (null, null);
             }
 
@@ -727,7 +722,13 @@ namespace Niemi.Services;
                         {
                             var rowOrderNo = ordrRadReader.GetInt32(0); // ORD_DOKN
                             var artbText = ordrRadReader.IsDBNull(3) ? null : ordrRadReader.GetString(3); // ORD_ARTB
-                            var (matchedKeyword, matchedCategory) = MatchKeywords(artbText);
+                            var ordAnta = ordrRadReader.IsDBNull(4) ? 0 : ordrRadReader.GetDouble(4); // ORD_ANTA
+                            var ordTyp = ordrRadReader.IsDBNull(8) ? null : ordrRadReader.GetString(8); // ORD_TYP
+                            
+                            // Only match categories for labor rows (ORD_TYP = "A") with non-zero quantity
+                            var (matchedKeyword, matchedCategory) = (ordTyp == "A" && ordAnta != 0) 
+                                ? MatchKeywords(artbText) 
+                                : (null, null);
                             
                             if (!ordrRadData.ContainsKey(rowOrderNo))
                             {
@@ -740,11 +741,11 @@ namespace Niemi.Services;
                                 OrdRadnr = ordrRadReader.IsDBNull(1) ? 0 : (int)ordrRadReader.GetDouble(1), // ORD_RADNR
                                 OrdArtn = ordrRadReader.IsDBNull(2) ? null : ordrRadReader.GetString(2), // ORD_ARTN
                                 OrdArtb = artbText, // ORD_ARTB
-                                OrdAnta = ordrRadReader.IsDBNull(4) ? 0 : ordrRadReader.GetDouble(4), // ORD_ANTA
+                                OrdAnta = ordAnta, // ORD_ANTA
                                 OrdInpris = ordrRadReader.IsDBNull(5) ? 0 : ordrRadReader.GetDouble(5), // ORD_INPRIS
                                 OrdRaba = ordrRadReader.IsDBNull(6) ? 0 : ordrRadReader.GetDouble(6), // ORD_RABA
                                 OrdMoms = ordrRadReader.IsDBNull(7) ? 0 : ordrRadReader.GetDouble(7), // ORD_MOMS
-                                OrdTyp = ordrRadReader.IsDBNull(8) ? null : ordrRadReader.GetString(8), // ORD_TYP
+                                OrdTyp = ordTyp, // ORD_TYP
                                 OrdKod = ordrRadReader.IsDBNull(9) ? null : ordrRadReader.GetString(9), // ORD_KOD
                                 OrdSummaexkl = ordrRadReader.IsDBNull(10) ? 0 : ordrRadReader.GetDouble(10), // ORD_SUMMAEXKL
                                 OrdCreatedAt = ordrRadReader.IsDBNull(11) ? null : ordrRadReader.GetDateTime(11), // ORD_CREATED_AT
@@ -776,6 +777,10 @@ namespace Niemi.Services;
                         {
                             order.OrderRows = ordrRadData[order.OrhDokn];
                             
+                            // Check if order has any labor rows (ORD_TYP = "A" with non-zero quantity)
+                            var hasLaborRows = order.OrderRows
+                                .Any(row => row.OrdTyp == "A" && row.OrdAnta != 0);
+                            
                             // Extract distinct categories from order rows
                             var categories = order.OrderRows
                                 .Where(row => !string.IsNullOrEmpty(row.MatchedCategory))
@@ -783,6 +788,12 @@ namespace Niemi.Services;
                                 .Distinct()
                                 .OrderBy(cat => cat)
                         .ToList();
+                    
+                            // If order has labor rows but no categories found, default to "Reparation"
+                            if (hasLaborRows && categories.Count == 0)
+                            {
+                                categories.Add("Reparation");
+                            }
                     
                             order.Categories = categories;
                             
@@ -1289,7 +1300,13 @@ namespace Niemi.Services;
                         {
                             var rowOrderNo = ordrRadReader.GetInt32(0); // ORD_DOKN
                             var artbText = ordrRadReader.IsDBNull(3) ? null : ordrRadReader.GetString(3); // ORD_ARTB
-                            var (matchedKeyword, matchedCategory) = MatchKeywords(artbText);
+                            var ordAnta = ordrRadReader.IsDBNull(4) ? 0 : ordrRadReader.GetDouble(4); // ORD_ANTA
+                            var ordTyp = ordrRadReader.IsDBNull(8) ? null : ordrRadReader.GetString(8); // ORD_TYP
+                            
+                            // Only match categories for labor rows (ORD_TYP = "A") with non-zero quantity
+                            var (matchedKeyword, matchedCategory) = (ordTyp == "A" && ordAnta != 0) 
+                                ? MatchKeywords(artbText) 
+                                : (null, null);
                             
                             if (!ordrRadData.ContainsKey(rowOrderNo))
                             {
@@ -1302,11 +1319,11 @@ namespace Niemi.Services;
                                 OrdRadnr = ordrRadReader.IsDBNull(1) ? 0 : (int)ordrRadReader.GetDouble(1), // ORD_RADNR
                                 OrdArtn = ordrRadReader.IsDBNull(2) ? null : ordrRadReader.GetString(2), // ORD_ARTN
                                 OrdArtb = artbText, // ORD_ARTB
-                                OrdAnta = ordrRadReader.IsDBNull(4) ? 0 : ordrRadReader.GetDouble(4), // ORD_ANTA
+                                OrdAnta = ordAnta, // ORD_ANTA
                                 OrdInpris = ordrRadReader.IsDBNull(5) ? 0 : ordrRadReader.GetDouble(5), // ORD_INPRIS
                                 OrdRaba = ordrRadReader.IsDBNull(6) ? 0 : ordrRadReader.GetDouble(6), // ORD_RABA
                                 OrdMoms = ordrRadReader.IsDBNull(7) ? 0 : ordrRadReader.GetDouble(7), // ORD_MOMS
-                                OrdTyp = ordrRadReader.IsDBNull(8) ? null : ordrRadReader.GetString(8), // ORD_TYP
+                                OrdTyp = ordTyp, // ORD_TYP
                                 OrdKod = ordrRadReader.IsDBNull(9) ? null : ordrRadReader.GetString(9), // ORD_KOD
                                 OrdSummaexkl = ordrRadReader.IsDBNull(10) ? 0 : ordrRadReader.GetDouble(10), // ORD_SUMMAEXKL
                                 OrdCreatedAt = ordrRadReader.IsDBNull(11) ? null : ordrRadReader.GetDateTime(11), // ORD_CREATED_AT
@@ -1338,6 +1355,10 @@ namespace Niemi.Services;
                         {
                             order.OrderRows = ordrRadData[order.OrhDokn];
                             
+                            // Check if order has any labor rows (ORD_TYP = "A" with non-zero quantity)
+                            var hasLaborRows = order.OrderRows
+                                .Any(row => row.OrdTyp == "A" && row.OrdAnta != 0);
+                            
                             // Extract distinct categories from order rows
                             var categories = order.OrderRows
                                 .Where(row => !string.IsNullOrEmpty(row.MatchedCategory))
@@ -1345,6 +1366,12 @@ namespace Niemi.Services;
                                 .Distinct()
                                 .OrderBy(cat => cat)
                         .ToList();
+                    
+                            // If order has labor rows but no categories found, default to "Reparation"
+                            if (hasLaborRows && categories.Count == 0)
+                            {
+                                categories.Add("Reparation");
+                            }
                     
                             order.Categories = categories;
                             

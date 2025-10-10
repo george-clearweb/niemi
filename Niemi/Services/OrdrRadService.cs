@@ -11,17 +11,11 @@ public class OrdrRadService : IOrdrRadService
     private readonly ILogger<OrdrRadService> _logger;
 
     // Static keyword categories data
+    // Priority order matches official specification (IDs 1-33)
     // NOTE: Short keywords (AC, MV, MOK) have leading spaces to prevent false positives
+    // Default: "Reparation" is added at order level only if order has labor rows but no categories matched
     private static readonly List<KeywordCategoryDto> KeywordCategories = new()
     {
-        new KeywordCategoryDto
-        {
-            Category = "Reparation",
-            Entries = new List<KeywordEntryDto>
-            {
-                new() { Id = 0, Keyword = "REPARATION" }
-            }
-        },
         new KeywordCategoryDto
         {
             Category = "Felsökning",
@@ -89,7 +83,7 @@ public class OrdrRadService : IOrdrRadService
             {
                 new() { Id = 26, Keyword = "DÄCK" },
                 new() { Id = 27, Keyword = "HJULINSTÄLLNING" },
-                new() { Id = 28, Keyword = "HJULSMATNING" },
+                new() { Id = 28, Keyword = "HJULSMÄTNING" },
                 new() { Id = 29, Keyword = "HJULSKIFT" },
                 new() { Id = 30, Keyword = "TPMS" },
                 new() { Id = 31, Keyword = "PUNK" },
