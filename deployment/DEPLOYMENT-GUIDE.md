@@ -1,5 +1,7 @@
 # Niemi API Deployment Guide for Ubuntu Server
 
+> ⭐ **For quick updates to an existing server, see [SIMPLE-DEPLOY.md](SIMPLE-DEPLOY.md)** - This guide is for detailed first-time setup and reference.
+
 ## Prerequisites
 - Ubuntu Server 24.04 LTS or 22.04 LTS with .NET 8.0 installed (see HYPER-V-SETUP.md)
 - SSH access to the server

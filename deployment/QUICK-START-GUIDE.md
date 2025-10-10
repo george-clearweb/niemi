@@ -1,5 +1,7 @@
 # 🚀 Quick Start Guide - Deploy Niemi API to Linux
 
+> ⭐ **For quick updates to an existing server, see [SIMPLE-DEPLOY.md](SIMPLE-DEPLOY.md)** - This guide is for first-time setup.
+
 This is a condensed guide to get you up and running quickly. For detailed instructions, see the full guides.
 
 ## Prerequisites
