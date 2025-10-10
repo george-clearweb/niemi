@@ -4,8 +4,10 @@ This deployment package contains everything you need to deploy the Niemi API to 
 
 ## 📦 Package Contents
 
+- **SIMPLE-DEPLOY.md** - ⭐ **Quick deployment guide with tested commands (USE THIS FOR UPDATES)**
 - **HYPER-V-SETUP.md** - Complete guide to create and configure the Ubuntu VM in Hyper-V
 - **DEPLOYMENT-GUIDE.md** - Step-by-step deployment instructions
+- **QUICK-START-GUIDE.md** - Condensed setup guide for first-time deployment
 - **niemi-api.service** - Systemd service configuration
 - **nginx-niemi-api.conf** - Nginx reverse proxy configuration
 - **deploy.sh** - Automated deployment script
@@ -13,7 +15,19 @@ This deployment package contains everything you need to deploy the Niemi API to 
 
 ## 🚀 Quick Start
 
-### Option 1: Manual Deployment (Recommended for first time)
+### **⭐ RECOMMENDED: Simple Deployment (For Updates)**
+
+**If your server is already set up, use this:**
+
+```bash
+cat SIMPLE-DEPLOY.md
+```
+
+This guide has the exact tested commands for quick deployments.
+
+---
+
+### Option 1: First Time Setup
 
 1. **Set up Hyper-V VM**
    ```bash
@@ -27,7 +41,7 @@ This deployment package contains everything you need to deploy the Niemi API to 
    cat DEPLOYMENT-GUIDE.md
    ```
 
-### Option 2: Automated Deployment
+### Option 2: Automated Deployment (Advanced)
 
 1. **Publish the application** (on your Windows machine):
    ```powershell
