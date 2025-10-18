@@ -12,6 +12,7 @@ public class OrdrRadDto
     public double OrdMoms { get; set; }                  // ORD_MOMS - VAT
     public string? OrdTyp { get; set; }                   // ORD_TYP - Type
     public string? OrdKod { get; set; }                  // ORD_KOD - Code
+    public string? OrdMatkod { get; set; }               // ORD_MATKOD - Material Code
     public double OrdSummaexkl { get; set; }             // ORD_SUMMAEXKL - Sum Excluding VAT
     public DateTime? OrdCreatedAt { get; set; }          // ORD_CREATED_AT - Created At
     public DateTime? OrdUpdatedAt { get; set; }          // ORD_UPDATED_AT - Updated At

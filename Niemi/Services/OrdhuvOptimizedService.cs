@@ -698,6 +698,7 @@ namespace Niemi.Services;
                                 ORD_MOMS,
                                 ORD_TYP,
                                 ORD_KOD,
+                                ORD_MATKOD,
                                 ORD_SUMMAEXKL,
                                 ORD_CREATED_AT,
                                 ORD_UPDATED_AT
@@ -712,7 +713,7 @@ namespace Niemi.Services;
                             }
 
                             // Log the ORDRAD SQL command (shortened version)
-                            var shortOrdrRadSql = $"SELECT ORD_DOKN, ORD_RADNR, ORD_ARTN, ORD_ARTB, ORD_ANTA, ORD_INPRIS, ORD_RABA, ORD_MOMS, ORD_TYP, ORD_KOD, ORD_SUMMAEXKL, ORD_CREATED_AT, ORD_UPDATED_AT FROM ORDRAD WHERE ORD_DOKN IN ({string.Join(",", batch)}) ORDER BY ORD_DOKN, ORD_RADNR";
+                            var shortOrdrRadSql = $"SELECT ORD_DOKN, ORD_RADNR, ORD_ARTN, ORD_ARTB, ORD_ANTA, ORD_INPRIS, ORD_RABA, ORD_MOMS, ORD_TYP, ORD_KOD, ORD_MATKOD, ORD_SUMMAEXKL, ORD_CREATED_AT, ORD_UPDATED_AT FROM ORDRAD WHERE ORD_DOKN IN ({string.Join(",", batch)}) ORDER BY ORD_DOKN, ORD_RADNR";
                             _logger.LogInformation("Executing ORDRAD SQL batch on {Environment}: {SqlQuery}", environment, shortOrdrRadSql);
                             _logger.LogInformation("ORDRAD SQL Parameters: orderNumbers={OrderNumbers} (batch size: {BatchSize})", string.Join(",", batch), batch.Count());
 
@@ -747,9 +748,10 @@ namespace Niemi.Services;
                                 OrdMoms = ordrRadReader.IsDBNull(7) ? 0 : ordrRadReader.GetDouble(7), // ORD_MOMS
                                 OrdTyp = ordTyp, // ORD_TYP
                                 OrdKod = ordrRadReader.IsDBNull(9) ? null : ordrRadReader.GetString(9), // ORD_KOD
-                                OrdSummaexkl = ordrRadReader.IsDBNull(10) ? 0 : ordrRadReader.GetDouble(10), // ORD_SUMMAEXKL
-                                OrdCreatedAt = ordrRadReader.IsDBNull(11) ? null : ordrRadReader.GetDateTime(11), // ORD_CREATED_AT
-                                OrdUpdatedAt = ordrRadReader.IsDBNull(12) ? null : ordrRadReader.GetDateTime(12), // ORD_UPDATED_AT
+                                OrdMatkod = ordrRadReader.IsDBNull(10) ? null : ordrRadReader.GetString(10), // ORD_MATKOD
+                                OrdSummaexkl = ordrRadReader.IsDBNull(11) ? 0 : ordrRadReader.GetDouble(11), // ORD_SUMMAEXKL
+                                OrdCreatedAt = ordrRadReader.IsDBNull(12) ? null : ordrRadReader.GetDateTime(12), // ORD_CREATED_AT
+                                OrdUpdatedAt = ordrRadReader.IsDBNull(13) ? null : ordrRadReader.GetDateTime(13), // ORD_UPDATED_AT
                                 MatchedKeyword = matchedKeyword,
                                 MatchedCategory = matchedCategory
                             };
@@ -796,6 +798,16 @@ namespace Niemi.Services;
                             }
                     
                             order.Categories = categories;
+                            
+                            // Set BilVehiclecat to "Husbil" if it's null/empty and at least one order row has OrdMatkod = "HU"
+                            if (order.Vehicle != null && string.IsNullOrEmpty(order.Vehicle.BilVehiclecat))
+                            {
+                                var hasHusbilRow = order.OrderRows.Any(row => row.OrdMatkod == "HU");
+                                if (hasHusbilRow)
+                                {
+                                    order.Vehicle.BilVehiclecat = "Husbil";
+                                }
+                            }
                             
                             _logger.LogDebug("Added {RowCount} ORDRAD rows to order {OrderNo} in {Environment}", 
                                 order.OrderRows.Count, order.OrhDokn, environment);
@@ -1276,6 +1288,7 @@ namespace Niemi.Services;
                                 ORD_MOMS,
                                 ORD_TYP,
                                 ORD_KOD,
+                                ORD_MATKOD,
                                 ORD_SUMMAEXKL,
                                 ORD_CREATED_AT,
                                 ORD_UPDATED_AT
@@ -1290,7 +1303,7 @@ namespace Niemi.Services;
                             }
 
                             // Log the ORDRAD SQL command (shortened version)
-                            var shortOrdrRadSql = $"SELECT ORD_DOKN, ORD_RADNR, ORD_ARTN, ORD_ARTB, ORD_ANTA, ORD_INPRIS, ORD_RABA, ORD_MOMS, ORD_TYP, ORD_KOD, ORD_SUMMAEXKL, ORD_CREATED_AT, ORD_UPDATED_AT FROM ORDRAD WHERE ORD_DOKN IN ({string.Join(",", batch)}) ORDER BY ORD_DOKN, ORD_RADNR";
+                            var shortOrdrRadSql = $"SELECT ORD_DOKN, ORD_RADNR, ORD_ARTN, ORD_ARTB, ORD_ANTA, ORD_INPRIS, ORD_RABA, ORD_MOMS, ORD_TYP, ORD_KOD, ORD_MATKOD, ORD_SUMMAEXKL, ORD_CREATED_AT, ORD_UPDATED_AT FROM ORDRAD WHERE ORD_DOKN IN ({string.Join(",", batch)}) ORDER BY ORD_DOKN, ORD_RADNR";
                             _logger.LogInformation("Executing ORDRAD SQL batch on {Environment}: {SqlQuery}", environment, shortOrdrRadSql);
                             _logger.LogInformation("ORDRAD SQL Parameters: orderNumbers={OrderNumbers} (batch size: {BatchSize})", string.Join(",", batch), batch.Count());
 
@@ -1325,9 +1338,10 @@ namespace Niemi.Services;
                                 OrdMoms = ordrRadReader.IsDBNull(7) ? 0 : ordrRadReader.GetDouble(7), // ORD_MOMS
                                 OrdTyp = ordTyp, // ORD_TYP
                                 OrdKod = ordrRadReader.IsDBNull(9) ? null : ordrRadReader.GetString(9), // ORD_KOD
-                                OrdSummaexkl = ordrRadReader.IsDBNull(10) ? 0 : ordrRadReader.GetDouble(10), // ORD_SUMMAEXKL
-                                OrdCreatedAt = ordrRadReader.IsDBNull(11) ? null : ordrRadReader.GetDateTime(11), // ORD_CREATED_AT
-                                OrdUpdatedAt = ordrRadReader.IsDBNull(12) ? null : ordrRadReader.GetDateTime(12), // ORD_UPDATED_AT
+                                OrdMatkod = ordrRadReader.IsDBNull(10) ? null : ordrRadReader.GetString(10), // ORD_MATKOD
+                                OrdSummaexkl = ordrRadReader.IsDBNull(11) ? 0 : ordrRadReader.GetDouble(11), // ORD_SUMMAEXKL
+                                OrdCreatedAt = ordrRadReader.IsDBNull(12) ? null : ordrRadReader.GetDateTime(12), // ORD_CREATED_AT
+                                OrdUpdatedAt = ordrRadReader.IsDBNull(13) ? null : ordrRadReader.GetDateTime(13), // ORD_UPDATED_AT
                                 MatchedKeyword = matchedKeyword,
                                 MatchedCategory = matchedCategory
                             };
@@ -1374,6 +1388,16 @@ namespace Niemi.Services;
                             }
                     
                             order.Categories = categories;
+                            
+                            // Set BilVehiclecat to "Husbil" if it's null/empty and at least one order row has OrdMatkod = "HU"
+                            if (order.Vehicle != null && string.IsNullOrEmpty(order.Vehicle.BilVehiclecat))
+                            {
+                                var hasHusbilRow = order.OrderRows.Any(row => row.OrdMatkod == "HU");
+                                if (hasHusbilRow)
+                                {
+                                    order.Vehicle.BilVehiclecat = "Husbil";
+                                }
+                            }
                             
                             _logger.LogDebug("Added {RowCount} ORDRAD rows to order {OrderNo} in {Environment}", 
                                 order.OrderRows.Count, order.OrhDokn, environment);
