@@ -8,54 +8,40 @@ GET https://localhost:7000/ordhuv/licenseplate?licensePlate=BWL32X&invoiced=true
 POST https://localhost:7000/ordhuv/licenseplate
 Content-Type: application/json
 
-{
-  "licensePlates": ["BWL32X", "LBO058", "UBJ02T"]
-}
+["BWL32X", "LBO058", "UBJ02T"]
 
 ### Test POST /ordhuv/licenseplate endpoint with single license plate
 POST https://localhost:7000/ordhuv/licenseplate
 Content-Type: application/json
 
-{
-  "licensePlates": ["XYZ789"]
-}
+["XYZ789"]
 
 ### Test POST /ordhuv/licenseplate endpoint with empty license plates (should return error)
 POST https://localhost:7000/ordhuv/licenseplate
 Content-Type: application/json
 
-{
-  "licensePlates": []
-}
+[]
 
 ### Test POST /ordhuv/licenseplate endpoint with empty license plate (should return error)
 POST https://localhost:7000/ordhuv/licenseplate
 Content-Type: application/json
 
-{
-  "licensePlates": ["", "ABC123"]
-}
+["", "ABC123"]
 
 ### Test POST /ordhuv/licenseplate endpoint with invoiced=true and fromDate (filter by invoice date)
 POST https://localhost:7000/ordhuv/licenseplate?invoiced=true&fromDate=2024-01-01
 Content-Type: application/json
 
-{
-  "licensePlates": ["BWL32X", "LBO058"]
-}
+["BWL32X", "LBO058"]
 
 ### Test POST /ordhuv/licenseplate endpoint with invoiced=false and fromDate (filter by ORH_CREATED_AT)
 POST https://localhost:7000/ordhuv/licenseplate?invoiced=false&fromDate=2024-01-01
 Content-Type: application/json
 
-{
-  "licensePlates": ["BWL32X", "LBO058"]
-}
+["BWL32X", "LBO058"]
 
 ### Test POST /ordhuv/licenseplate endpoint with only invoiced=true (no date filter)
 POST https://localhost:7000/ordhuv/licenseplate?invoiced=true
 Content-Type: application/json
 
-{
-  "licensePlates": ["BWL32X", "LBO058"]
-}
+["BWL32X", "LBO058"]

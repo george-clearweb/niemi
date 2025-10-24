@@ -1,0 +1,106 @@
+### Test POST /ordhuv/phonenr endpoint with URL parameters only (no overrides)
+POST https://localhost:7000/ordhuv/phonenr?fromDate=2024-01-01T00:00:00Z&toDate=2024-12-31T23:59:59Z&environment=NIEM4&orhStat=A&customerType=Private&invoiced=true
+Content-Type: application/json
+
+[{
+  "callId": "call-001",
+  "phoneNumber": "+46701234567"
+}]
+
+### Test POST /ordhuv/phonenr endpoint with some overrides
+POST https://localhost:7000/ordhuv/phonenr?fromDate=2024-01-01T00:00:00Z&toDate=2024-12-31T23:59:59Z&environment=NIEM4&orhStat=A&customerType=Private&invoiced=true
+Content-Type: application/json
+
+[{
+  "callId": "call-001",
+  "phoneNumber": "+46701234567",
+  "overrideDatabase": "NIE2V",
+  "overrideFromDate": "2024-06-01T00:00:00Z"
+}, {
+  "callId": "call-002", 
+  "phoneNumber": "0701234567",
+  "overrideInvoiced": false
+}, {
+  "callId": "call-003",
+  "phoneNumber": "090-123 45 67"
+}]
+
+### Test POST /ordhuv/phonenr endpoint with full overrides
+POST https://localhost:7000/ordhuv/phonenr?fromDate=2024-01-01T00:00:00Z&toDate=2024-12-31T23:59:59Z&environment=NIEM4&orhStat=A&customerType=Private&invoiced=true
+Content-Type: application/json
+
+[{
+  "callId": "call-001",
+  "phoneNumber": "+46701234567",
+  "overrideDatabase": "NIEM4",
+  "overrideFromDate": "2024-01-01T00:00:00Z",
+  "overrideToDate": "2024-12-31T23:59:59Z",
+  "overrideOrhStat": "A",
+  "overrideCustomerType": "Private",
+  "overrideInvoiced": true
+}, {
+  "callId": "call-002",
+  "phoneNumber": "0701234567",
+  "overrideDatabase": "NIE2V",
+  "overrideFromDate": "2024-06-01T00:00:00Z",
+  "overrideToDate": "2024-06-30T23:59:59Z",
+  "overrideOrhStat": "A",
+  "overrideCustomerType": "Private",
+  "overrideInvoiced": false
+}]
+
+### Test POST /ordhuv/phonenr endpoint with mixed overrides
+POST https://localhost:7000/ordhuv/phonenr?fromDate=2024-01-01T00:00:00Z&toDate=2024-12-31T23:59:59Z&environment=NIEM4&orhStat=A&customerType=Private&invoiced=true
+Content-Type: application/json
+
+[{
+  "callId": "call-001",
+  "phoneNumber": "+46701234567"
+}, {
+  "callId": "call-002",
+  "phoneNumber": "0701234567",
+  "overrideDatabase": "NIE2V",
+  "overrideFromDate": "2024-06-01T00:00:00Z",
+  "overrideInvoiced": false
+}, {
+  "callId": "call-003",
+  "phoneNumber": "090-123 45 67",
+  "overrideDatabase": "NIEM5",
+  "overrideFromDate": "2024-03-01T00:00:00Z",
+  "overrideToDate": "2024-03-31T23:59:59Z",
+  "overrideOrhStat": "KON",
+  "overrideCustomerType": "Business"
+}]
+
+### Test POST /ordhuv/phonenr endpoint with empty phone number (should return error)
+POST https://localhost:7000/ordhuv/phonenr?fromDate=2024-01-01T00:00:00Z&toDate=2024-12-31T23:59:59Z&environment=NIEM4
+Content-Type: application/json
+
+[{
+  "callId": "call-001",
+  "phoneNumber": ""
+}]
+
+### Test POST /ordhuv/phonenr endpoint with empty array (should return error)
+POST https://localhost:7000/ordhuv/phonenr?fromDate=2024-01-01T00:00:00Z&toDate=2024-12-31T23:59:59Z&environment=NIEM4
+Content-Type: application/json
+
+[]
+
+### Test POST /ordhuv/phonenr endpoint with missing fromDate (should return error)
+POST https://localhost:7000/ordhuv/phonenr?toDate=2024-12-31T23:59:59Z&environment=NIEM4
+Content-Type: application/json
+
+[{
+  "callId": "call-001",
+  "phoneNumber": "+46701234567"
+}]
+
+### Test POST /ordhuv/phonenr endpoint with missing toDate (should return error)
+POST https://localhost:7000/ordhuv/phonenr?fromDate=2024-01-01T00:00:00Z&environment=NIEM4
+Content-Type: application/json
+
+[{
+  "callId": "call-001",
+  "phoneNumber": "+46701234567"
+}]
