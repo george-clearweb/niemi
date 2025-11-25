@@ -1755,13 +1755,16 @@ namespace Niemi.Services;
                         SELECT 
                             ORD_DOKN,
                             ORD_RADNR,
-                            ORD_ANTAL,
-                            ORD_PRIS,
-                            ORD_SUMMA,
+                            ORD_ARTN,
+                            CAST(ORD_ARTB AS VARCHAR(1000) CHARACTER SET UTF8) as ORD_ARTB,
+                            ORD_ANTA,
+                            ORD_INPRIS,
+                            ORD_RABA,
+                            ORD_MOMS,
+                            ORD_TYP,
+                            ORD_KOD,
                             ORD_MATKOD,
-                            ORD_BETECKNING,
-                            ORD_KATEGORI,
-                            ORD_FAKTURERAD,
+                            ORD_SUMMAEXKL,
                             ORD_CREATED_AT,
                             ORD_UPDATED_AT
                         FROM ORDRAD
