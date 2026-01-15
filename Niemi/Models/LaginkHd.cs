@@ -2,6 +2,7 @@ namespace Niemi.Models;
 
 public class LaginkHd
 {
+    public string Database { get; set; } = string.Empty; // Database environment (NIE2V, NIEM3, etc.)
     public long OrderNr { get; set; }
     public DateTime OrderDatum { get; set; }
     public string? Lev { get; set; }

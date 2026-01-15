@@ -132,6 +132,8 @@ void ConfigureEndpoints(WebApplication app)
         [Required] DateTime toDate,
         int? skip,
         int? take,
+        string? environment,
+        [FromQuery] string[]? environments,
         ILaginkService laginkService) =>
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -147,10 +149,12 @@ void ConfigureEndpoints(WebApplication app)
                 fromDate, 
                 toDate, 
                 skip ?? 0, 
-                take ?? 100);
+                take ?? 100,
+                environment,
+                environments);
                 
             sw.Stop();
-            logger.LogInformation("Request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            logger.LogInformation("LAGINK request completed in {ElapsedMs}ms", sw.ElapsedMilliseconds);
             return Results.Ok(results);
         }
         catch (Exception ex)
