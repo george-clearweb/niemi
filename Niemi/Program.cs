@@ -1074,7 +1074,8 @@ static RuleIoSubscribersRequestDto TransformOrdersToRuleIoFormat(IEnumerable<Ord
                 new() { Key = "Infoflex.Modellar", Value = order.Vehicle?.BilArsm.ToString() ?? "", Type = "text" },
                 new() { Key = "Infoflex.Regnr", Value = order.OrhRenr ?? "", Type = "text" },
                 new() { Key = "Infoflex.Jobbtyp", Value = order.Categories?.ToArray() ?? new string[0], Type = "multiple" },
-                new() { Key = "Infoflex.Skapad", Value = order.OrhCreatedAt?.ToString("yyyy-MM-dd") ?? "", Type = "date" }
+                new() { Key = "Infoflex.Skapad", Value = order.OrhCreatedAt?.ToString("yyyy-MM-dd") ?? "", Type = "date" },
+                new() { Key = "Infoflex.Stad", Value = order.Customer?.City ?? "", Type = "text" }
             }
         };
         
